@@ -11,13 +11,13 @@ def home(request):
 
 def upload_receipt(request):
     if request.method == 'POST' and request.FILES.get('receipt_image'):
-        image = request.FILES['receipt_image']
-        receipt_name = image.name  # Get the original filename
+        image = request.FILES['receipt_image']  # handle image upload
+        receipt_name = image.name  # get the original filename
 
-        receipt = Receipt(image=image, receipt_name=receipt_name)
-        receipt.save()  # Automatically uploads to AWS S3
+        receipt = Receipt(image=image, receipt_name=receipt_name)   # create receipt
+        receipt.save()  # uploads to AWS S3 bucket
 
-        return redirect('upload_receipt')  # Prevent duplicate submissions on refresh
+        return redirect('upload_receipt')  # prevent duplicate submissions on refresh
 
     receipts = Receipt.objects.all()
     return render(request, 'receipts/upload_receipt.html', {'receipts': receipts})
@@ -26,7 +26,7 @@ def delete_receipt(request, receipt_id):
     if request.method == "POST":
         receipt = get_object_or_404(Receipt, id=receipt_id)
 
-        # Delete from AWS S3
+        # delete from bucket
         s3 = boto3.client(
             "s3",
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -38,7 +38,7 @@ def delete_receipt(request, receipt_id):
         except Exception as e:
             return JsonResponse({"error": f"S3 delete failed: {str(e)}"}, status=500)
 
-        # Delete from database
+        # delete from database
         receipt.delete()
         return JsonResponse({"message": "Receipt deleted successfully"}, status=200)
 

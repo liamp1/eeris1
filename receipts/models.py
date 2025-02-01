@@ -9,7 +9,7 @@ class Receipt(models.Model):
 
     def save(self, *args, **kwargs):
         if self.image and not self.receipt_name:
-            self.receipt_name = self.image.name.split("/")[-1]  # Extract filename from path
+            self.receipt_name = self.image.name.split("/")[-1]  # extract filename from path
         super().save(*args, **kwargs)
         
     def image_url(self):
