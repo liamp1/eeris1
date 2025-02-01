@@ -61,8 +61,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "receipts",
-    "storages",
+    "storages", # aws s3 bucket storage
+    "receipts", # receiepts app
+    "accounts", # accounts app
+    
 ]
 
 MIDDLEWARE = [

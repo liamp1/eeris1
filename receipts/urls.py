@@ -3,5 +3,5 @@ from . import views
 
 urlpatterns = [
     path('upload/', views.upload_receipt, name='upload_receipt'),
-    path('delete/<int:receipt_id>/', views.delete_receipt, name='delete_receipt'),  # ✅ Ensure this is correct
+    path('delete/<int:receipt_id>/', views.delete_receipt, name='delete_receipt'), 
 ]

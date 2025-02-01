@@ -3,21 +3,20 @@ from django.http import JsonResponse
 from .models import Receipt
 import boto3
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 
 # Create your views here.
 
-def home(request):
-    return render(request, "home.html")
 
+
+@login_required
 def upload_receipt(request):
     if request.method == 'POST' and request.FILES.get('receipt_image'):
-        image = request.FILES['receipt_image']  # handle image upload
-        receipt_name = image.name  # get the original filename
-
-        receipt = Receipt(image=image, receipt_name=receipt_name)   # create receipt
-        receipt.save()  # uploads to AWS S3 bucket
-
-        return redirect('upload_receipt')  # prevent duplicate submissions on refresh
+        image = request.FILES['receipt_image']
+        receipt_name = image.name  # Get the original filename
+        receipt = Receipt(image=image, receipt_name=receipt_name)
+        receipt.save()  # Automatically uploads to AWS S3
+        return redirect('upload_receipt')  # Prevent duplicate submissions on refresh
 
     receipts = Receipt.objects.all()
     return render(request, 'receipts/upload_receipt.html', {'receipts': receipts})
