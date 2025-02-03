@@ -67,18 +67,19 @@ def generate_presigned_url(user_id, object_name, expiration=3600):
 
 # Returns a list of user receipts
 def get_user_receipts(user_id):
-
     try:
+        # Ensure user_id is a string
+        user_id = str(user_id)
 
         response = table.query(KeyConditionExpression=Key("UserID").eq(user_id))
 
         receipts = response.get("Items", [])
-
         return receipts
 
     except Exception as e:
         print(f"Error getting receipts: {e}")
         return []
+
 
 
 def delete_receipt(user_id, object_name):

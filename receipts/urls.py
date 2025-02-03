@@ -1,7 +1,7 @@
 from django.urls import path
-from . import views
+from .views import upload_receipt, delete_receipt_view
 
 urlpatterns = [
-    path('upload/', views.upload_receipt, name='upload_receipt'),
-    path('delete/<int:receipt_id>/', views.delete_receipt, name='delete_receipt'),  # ✅ Ensure this is correct
+    path("upload/", upload_receipt, name="upload_receipt"),
+    path("delete/<str:receipt_id>/", delete_receipt_view, name="delete_receipt"),
 ]

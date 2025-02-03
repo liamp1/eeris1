@@ -1,4 +1,4 @@
-import aws_utils
+import receipts.aws_utils as aws_utils
 import time
 
 object_name = "receipt2.png"

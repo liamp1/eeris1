@@ -23,13 +23,13 @@
             <div class="card">
                 <div class="position-relative">
                     <button type="button" class="btn btn-danger btn-sm position-absolute" style="top: 10px; right: 10px;"
-                            onclick="confirmDelete('{{ receipt.id }}')">
+                            onclick="confirmDelete('{{ receipt.ReceiptID }}')">
                         &times;
                     </button>
                 </div>
-                <img src="{{ receipt.image.url }}" class="card-img-top" alt="Receipt Image">
+                <img src="{{ receipt.image_url }}" class="card-img-top" alt="Receipt Image">
                 <div class="card-body">
-                    <p class="card-text"><strong>Name:</strong> {{ receipt.receipt_name }}</p>
+                    <p class="card-text"><strong>Name:</strong> {{ receipt.ReceiptID }}</p>
                     <p class="card-text"><strong>Uploaded:</strong> {{ receipt.uploaded_at }}</p>
                 </div>
             </div>
@@ -40,7 +40,7 @@
     </div>
 </div>
 
-<!-- delete confirmation popup -->
+<!-- JavaScript for Delete Confirmation -->
 <script>
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
@@ -53,7 +53,7 @@
             })
             .then(response => {
                 if (response.ok) {
-                    location.reload();  // refresh page after deletion
+                    location.reload();  // Refresh page after deletion
                 } else {
                     response.json().then(data => alert("Error: " + data.error));
                 }
