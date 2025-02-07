@@ -3,10 +3,20 @@
 {% block title %}Upload Receipt{% endblock %}
 
 {% block content %}
+<style>
+    .card {
+        transition: transform 0.2s ease-in-out;
+    }
+    .card:hover {
+        transform: scale(1.01);
+    }
+</style>
+
 <div class="container mt-4">
+
+    <!-- Receipt Upload Form -->
     <h2 class="mb-4">Upload Receipt</h2>
-    
-    <form method="POST" enctype="multipart/form-data" class="mb-4">
+    <form method="POST" action="{% url 'upload_receipt' %}" enctype="multipart/form-data" class="mb-4">
         {% csrf_token %}
         <div class="form-group">
             <input type="file" name="receipt_image" class="form-control-file" accept="image/*" required>
@@ -14,31 +24,89 @@
         <button type="submit" class="btn btn-primary">Upload</button>
     </form>
 
-    <hr>
-
+    
+    <!-- Uploaded Receipts Section -->
     <h3>Uploaded Receipts</h3>
     <div class="row">
         {% for receipt in receipts %}
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="position-relative">
-                    <button type="button" class="btn btn-danger btn-sm position-absolute" style="top: 10px; right: 10px;"
-                            onclick="confirmDelete('{{ receipt.ReceiptID }}')">
-                        &times;
+            <div class="col-md-4 mb-4">
+                <div class="card postition-relative">
+                    <!-- Delete Button -->
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2" onclick="confirmDelete('{{ receipt.ReceiptID }}')">&times;</button>
+                    </div>
+                    <img src="{{ receipt.image_url }}" class="card-img-top receipt-thumbnail"
+                        data-receipt-id="{{ receipt.ReceiptID }}" alt="Receipt Image" style="cursor: pointer;">
+                    <div class="card-body">
+                        <p class="card-text"><strong>ID:</strong> {{ receipt.ReceiptID }}</p>
+                        <p class="card-text"><strong>Vendor:</strong> {{ receipt.Vendor }}</p>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <p>No receipts uploaded yet.</p>
+        {% endfor %}
+    </div>
+    
+
+
+    
+
+
+    <!-- Modal -->
+    <div class="modal fade" id="receiptModal" tabindex="-1" role="dialog" aria-labelledby="receiptModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="receiptModalLabel">Edit Receipt</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
-                <img src="{{ receipt.image_url }}" class="card-img-top" alt="Receipt Image">
-                <div class="card-body">
-                    <p class="card-text"><strong>Name:</strong> {{ receipt.ReceiptID }}</p>
-                    <p class="card-text"><strong>Uploaded:</strong> {{ receipt.uploaded_at }}</p>
+                <div class="modal-body">
+                    <form id="updateReceiptForm">
+                        {% csrf_token %}
+
+                        <p><strong>User ID:</strong> <span id="modalUserID"></span></p>
+                        <p><strong>Receipt ID:</strong> <span id="modalReceiptID"></span></p>
+                        <p><strong>Upload Date:</strong> <span id="modalUploadDate"></span></p>
+
+                        <div class="form-group">
+                            <label for="modalVendor">Vendor:</label>
+                            <input type="text" id="modalVendor" name="Vendor" class="form-control">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="modalTotal">Total:</label>
+                            <input type="text" id="modalTotalCost" name="TotalCost" class="form-control">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="modalDate">Date:</label>
+                            <input type="date" id="modalDate" name="Date" class="form-control">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="modalCategory">Category:</label>
+                            <input type="text" id="modalCategory" name="Category" class="form-control">
+                        </div>
+
+                        <button type="submit" class="btn btn-success">Save Changes</button>
+                    </form>
                 </div>
             </div>
         </div>
-        {% empty %}
-        <p>No receipts uploaded yet.</p>
-        {% endfor %}
     </div>
+
+
+
+
+
+
+
 </div>
+
+
 
 <!-- JavaScript for Delete Confirmation -->
 <script>
@@ -61,5 +129,62 @@
             .catch(error => alert("Network error: " + error));
         }
     }
+
+
+
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
+            img.addEventListener("click", function () {
+                let receiptID = this.getAttribute("data-receipt-id");
+
+                fetch(`/receipts/details/${receiptID}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            alert("Error: " + data.error);
+                        } else {
+                            document.getElementById("modalUserID").textContent = data.UserID;
+                            document.getElementById("modalReceiptID").textContent = data.ReceiptID;
+                            document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
+
+                            document.getElementById("modalVendor").value = data.Vendor || "";
+                            document.getElementById("modalTotalCost").value = data.TotalCost || "";  // ✅ Ensure "Total" field is sent
+                            document.getElementById("modalDate").value = data.Date || "";
+                            document.getElementById("modalCategory").value = data.Category || "";
+
+                            $("#receiptModal").modal("show");
+                        }
+                    })
+                    .catch(error => console.error("Error fetching receipt details:", error));
+            });
+        });
+
+        document.getElementById("updateReceiptForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+            let receiptID = document.getElementById("modalReceiptID").textContent;  // ✅ Fix: Use .textContent to get the correct ReceiptID
+            let formData = new FormData(this);
+
+            fetch(`/receipts/update/${receiptID}/`, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value 
+                },
+                body: new URLSearchParams(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert("Error: " + data.error);
+                } else {
+                    alert("Receipt updated successfully");
+                    location.reload();
+                }
+            })
+            .catch(error => console.error("Error updating receipt:", error));
+        });
+    });
+
+
+
 </script>
 {% endblock %}
