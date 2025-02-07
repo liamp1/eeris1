@@ -4,6 +4,8 @@ from boto3.dynamodb.conditions import Key
 import os
 from dotenv import load_dotenv
 import mimetypes
+from typing import Optional
+from django.core.files.uploadedfile import UploadedFile
 
 # Credentials for AWS
 load_dotenv()
@@ -27,23 +29,42 @@ TABLE_NAME = "eeris-1-dynamodb"
 table = dynamodb.Table(TABLE_NAME)
 
 
-def upload_receipt_to_s3(file_path, user_id):
-    object_key = f"receipts/{user_id}/{os.path.basename(file_path)}"
-    content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+def upload_receipt_to_s3(image: UploadedFile, user_id: str) -> Optional[str]:
+
+    object_key: str = f"receipts/{user_id}/{image.name}"
+    content_type: str = (
+        image.content_type
+        or mimetypes.guess_type(image.name)[0]
+        or "application/octet-stream"
+    )
 
     try:
-        # Open file in binary mode
-        with open(file_path, "rb") as file:
-            s3.upload_fileobj(
-                file, BUCKET_NAME, object_key, ExtraArgs={"ContentType": content_type}
-            )
+        s3.upload_fileobj(
+            image, BUCKET_NAME, object_key, ExtraArgs={"ContentType": content_type}
+        )
 
-        # print(f"Uploaded {file_path} to {BUCKET_NAME}/{object_key}")
-        return object_key
-
+        return object_key  # Return the S3 object key
     except Exception as e:
         print(f"Error uploading to S3: {e}")
         return None
+
+
+def update_receipt_metadata(user_id: str, receipt_id: str, updated_data: dict) -> bool:
+    try:
+        update_expression = "SET " + ", ".join(
+            f"{key} = :{key}" for key in updated_data
+        )
+        expression_values = {f":{key}": value for key, value in updated_data.items()}
+
+        table.update_item(
+            Key={"UserID": user_id, "ReceiptID": receipt_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_values,
+        )
+        return True  # Returns true if updated succesfully
+    except Exception as e:
+        print(f"Error updating receipt metadata: {e}")
+        return False
 
 
 # Used to get the URL to a receipt (single one)
@@ -79,7 +100,6 @@ def get_user_receipts(user_id):
     except Exception as e:
         print(f"Error getting receipts: {e}")
         return []
-
 
 
 def delete_receipt(user_id, object_name):
