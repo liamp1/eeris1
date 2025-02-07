@@ -117,10 +117,12 @@ def format_upload_date(iso_date):
 
 @login_required
 def get_receipt_details(request, receipt_id):
+    # get all receipts and their details based on userID
     user_id = str(request.user.id)
     receipts = get_user_receipts(user_id)
     receipt_details = next((r for r in receipts if r["ReceiptID"] == receipt_id), None)
     
+    # retrieve information
     if receipt_details:
         response_data = {
             "UserID": user_id,

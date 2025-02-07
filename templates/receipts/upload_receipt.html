@@ -13,7 +13,6 @@
 </style>
 
 <div class="container mt-4">
-
     <!-- Receipt Upload Form -->
     <h2 class="mb-4">Upload Receipt</h2>
     <form method="POST" action="{% url 'upload_receipt' %}" enctype="multipart/form-data" class="mb-4">
@@ -24,7 +23,6 @@
         <button type="submit" class="btn btn-primary">Upload</button>
     </form>
 
-    
     <!-- Uploaded Receipts Section -->
     <h3>Uploaded Receipts</h3>
     <div class="row">
@@ -47,11 +45,6 @@
             <p>No receipts uploaded yet.</p>
         {% endfor %}
     </div>
-    
-
-
-    
-
 
     <!-- Modal -->
     <div class="modal fade" id="receiptModal" tabindex="-1" role="dialog" aria-labelledby="receiptModalLabel" aria-hidden="true">
@@ -67,25 +60,30 @@
                     <form id="updateReceiptForm">
                         {% csrf_token %}
 
+                        <!-- Receipt Data -->
                         <p><strong>User ID:</strong> <span id="modalUserID"></span></p>
                         <p><strong>Receipt ID:</strong> <span id="modalReceiptID"></span></p>
                         <p><strong>Upload Date:</strong> <span id="modalUploadDate"></span></p>
-
+                        
+                        <!-- Vendor Data -->
                         <div class="form-group">
                             <label for="modalVendor">Vendor:</label>
                             <input type="text" id="modalVendor" name="Vendor" class="form-control">
                         </div>
 
+                        <!-- TotalCost Data -->
                         <div class="form-group">
-                            <label for="modalTotal">Total:</label>
+                            <label for="modalTotal">Total ($):</label>
                             <input type="text" id="modalTotalCost" name="TotalCost" class="form-control">
                         </div>
 
+                        <!-- Receipt Date Data -->
                         <div class="form-group">
                             <label for="modalDate">Date:</label>
                             <input type="date" id="modalDate" name="Date" class="form-control">
                         </div>
 
+                        <!-- Category of Receipt -->
                         <div class="form-group">
                             <label for="modalCategory">Category:</label>
                             <input type="text" id="modalCategory" name="Category" class="form-control">
@@ -97,19 +95,11 @@
             </div>
         </div>
     </div>
-
-
-
-
-
-
-
 </div>
 
 
-
-<!-- JavaScript for Delete Confirmation -->
 <script>
+    // JavaScript for Delete Confirmation
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
             fetch(`/receipts/delete/${receiptId}/`, {
@@ -121,7 +111,7 @@
             })
             .then(response => {
                 if (response.ok) {
-                    location.reload();  // Refresh page after deletion
+                    location.reload();  // refresh page after deletion
                 } else {
                     response.json().then(data => alert("Error: " + data.error));
                 }
@@ -130,8 +120,7 @@
         }
     }
 
-
-
+    // Fill in data inside Modal
     document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
             img.addEventListener("click", function () {
@@ -148,7 +137,7 @@
                             document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
 
                             document.getElementById("modalVendor").value = data.Vendor || "";
-                            document.getElementById("modalTotalCost").value = data.TotalCost || "";  // ✅ Ensure "Total" field is sent
+                            document.getElementById("modalTotalCost").value = data.TotalCost || ""; 
                             document.getElementById("modalDate").value = data.Date || "";
                             document.getElementById("modalCategory").value = data.Category || "";
 
@@ -159,9 +148,10 @@
             });
         });
 
+        // If new data in modal, update the object
         document.getElementById("updateReceiptForm").addEventListener("submit", function (event) {
             event.preventDefault();
-            let receiptID = document.getElementById("modalReceiptID").textContent;  // ✅ Fix: Use .textContent to get the correct ReceiptID
+            let receiptID = document.getElementById("modalReceiptID").textContent;  
             let formData = new FormData(this);
 
             fetch(`/receipts/update/${receiptID}/`, {
@@ -183,8 +173,6 @@
             .catch(error => console.error("Error updating receipt:", error));
         });
     });
-
-
 
 </script>
 {% endblock %}
