@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Manager Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    .card {
+        transition: transform 0.2s ease-in-out;
+    }
+    .card:hover {
+        transform: scale(1.01);
+    }
+    .status-approved {
+        color: #3ca155;
+        font-weight: bold;
+    }
+    .status-rejected {
+        color: #cb4351;
+        font-weight: bold;
+    }
+    .status-pending {
+        color: #f4c024;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="mb-3">
+        <h3>Manager Dashboard</h3>
+
+        <!-- Filter Dropdown -->
+        <form method="get" class="mb-3">
+            <label for="statusFilter"><strong>Filter by Status:</strong></label>
+            <select name="status" id="statusFilter" class="form-select w-auto d-inline-block" onchange="this.form.submit()">
+                <option value="ALL" {% if selected_status == "ALL" %}selected{% endif %}>All</option>
+                <option value="PENDING" {% if selected_status == "PENDING" %}selected{% endif %}>Pending</option>
+                <option value="APPROVED" {% if selected_status == "APPROVED" %}selected{% endif %}>Approved</option>
+                <option value="REJECTED" {% if selected_status == "REJECTED" %}selected{% endif %}>Rejected</option>
+            </select>
+        </form>
+
+        {% if not receipts %}
+            <p class="text-muted">No receipts uploaded yet.</p>
+        {% endif %}
+    </div>
+
+    
+
+
+
+    <div class="row">
+        {% for receipt in receipts %}
+            <div class="col-md-4 mb-4">
+                <div class="card position-relative">
+                    <img src="{{ receipt.presigned_url }}" class="card-img-top receipt-thumbnail"
+                        data-receipt-id="{{ receipt.ReceiptID }}" alt="Receipt Image" style="cursor: pointer;">
+                
+                    <!-- Delete Button -->
+                    <form method="POST" action="{% url 'delete_receipt' receipt.ReceiptID %}"
+                        onsubmit="return confirm('Are you sure you want to delete this receipt?');"
+                        style="position: absolute; top: 0.5rem; right: 0.5rem; z-index: 10;">
+              
+                        {% csrf_token %}
+                        <input type="hidden" name="user_id" value="{{ receipt.UserID }}">
+                        <button type="submit" class="btn btn-danger btn-sm">&times;</button>
+                    </form>
+
+                    <div class="card-body">
+                        <p class="card-text"><strong>User:</strong> {{ receipt.UserID }}</p>
+                        <p class="card-text"><strong>ID:</strong> {{ receipt.ReceiptID }}</p>
+                        <p class="card-text"><strong>Vendor:</strong> {{ receipt.Vendor }}</p>
+                        <p class="card-text"><strong>Total:</strong> ${{ receipt.TotalCost }}</p>
+                        <p class="card-text"><strong>Date:</strong> {{ receipt.Date|default:receipt.ReceiptDate|default:"N/A" }}</p>
+
+
+                        <p class="card-text">
+                            <strong>Status:</strong>
+                            <span class="
+                                {% if receipt.ApprovalStatus == 'APPROVED' %}status-approved{% endif %}
+                                {% if receipt.ApprovalStatus == 'REJECTED' %}status-rejected{% endif %}
+                                {% if receipt.ApprovalStatus == 'PENDING' %}status-pending{% endif %}
+                            ">
+                                {{ receipt.ApprovalStatus }}
+                            </span>
+                        </p>
+
+                        {% if receipt.ManagerComment %}
+                            <p class="card-text"><strong>Comment:</strong> {{ receipt.ManagerComment }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Modal -->
+    <div class="modal fade" id="receiptModal" tabindex="-1" role="dialog" aria-labelledby="receiptModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="receiptModalLabel">Review Receipt</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="managerReviewForm" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="user_id" id="modalUserIDHidden">
+
+                        <!-- Receipt Data -->
+                        <p><strong>User ID:</strong> <span id="modalUserID"></span></p>
+                        <p><strong>Receipt ID:</strong> <span id="modalReceiptID"></span></p>
+                        <p><strong>Upload Date:</strong> <span id="modalUploadDate"></span></p>
+                        <p><strong>Vendor:</strong> <span id="modalVendor"></span></p>
+                        <p><strong>Total:</strong> $<span id="modalTotalCost"></span></p>
+                        <p><strong>Date:</strong> <span id="modalDate"></span></p>
+                        <p><strong>Category:</strong> <span id="modalCategory"></span></p>
+
+                        <div class="form-group">
+                            <label for="modalManagerComment">Manager Comment:</label>
+                            <input type="text" name="comment" id="modalManagerComment" class="form-control">
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" name="action" value="approve" class="btn btn-success mr-2">Approve</button>
+                            <button type="submit" name="action" value="reject" class="btn btn-danger">Reject</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
+            img.addEventListener("click", function () {
+                let receiptID = this.getAttribute("data-receipt-id");
+
+                fetch(`/receipts/details/${receiptID}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            alert("Error: " + data.error);
+                        } else {
+                            document.getElementById("modalUserIDHidden").value = data.UserID;
+                            document.getElementById("modalUserID").textContent = data.UserID;
+                            document.getElementById("modalReceiptID").textContent = data.ReceiptID;
+                            document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
+                            document.getElementById("modalVendor").textContent = data.Vendor || "N/A";
+                            document.getElementById("modalTotalCost").textContent = data.TotalCost || "N/A";
+                            document.getElementById("modalDate").textContent = data.Date || "N/A";
+                            document.getElementById("modalCategory").textContent = data.Category || "N/A";
+
+
+                            document.getElementById("managerReviewForm").action = `/receipts/manager/action/${receiptID}/`;
+
+                            document.getElementById("modalManagerComment").value = "";
+
+                            $("#receiptModal").modal("show");
+                        }
+                    })
+                    .catch(error => console.error("Error fetching receipt details:", error));
+            });
+        });
+
+        document.getElementById("managerReviewForm").addEventListener("submit", function (event) {
+            const action = document.activeElement.value;
+            const comment = document.getElementById("modalManagerComment").value.trim();
+            if (action === "reject" && comment === "") {
+                alert("Please enter a comment for rejection.");
+                event.preventDefault();
+            }
+        });
+    });
+</script>
+
+{% endblock %}

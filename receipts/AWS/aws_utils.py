@@ -130,3 +130,27 @@ def delete_receipt_from_dynamodb(user_id, object_name):
     except Exception as e:
         print(f"Error deleting {object_name} from DynamoDB: {e}")
         return False
+
+def get_all_receipts():
+    try:
+        response = table.scan()
+        items = response.get("Items", [])
+        print(f"DEBUG: Retrieved {len(items)} receipts from DynamoDB")
+        return items
+    except Exception as e:
+        print(f"Error fetching all receipts: {e}")
+        return []
+
+def get_receipts_by_status(status: str):
+    try:
+        response = table.query(
+            IndexName="ApprovalStatusIndex",
+            KeyConditionExpression=Key("ApprovalStatus").eq(status.upper())
+        )
+        print("DEBUG: Querying GSI for status:", status)
+
+        return response.get("Items", [])
+    except Exception as e:
+        print(f"Error fetching receipts by status: {e}")
+        return []
+
