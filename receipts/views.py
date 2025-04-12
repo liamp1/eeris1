@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from .models import Receipt
+from django.db.models import Sum
 from django.conf import settings
 from .AWS.aws_utils import (
     upload_receipt_to_s3,
@@ -15,6 +16,9 @@ import os
 from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import UploadedFile
 from datetime import datetime
+import csv
+from io import StringIO
+from django.http import HttpResponse
 
 
 
@@ -83,6 +87,96 @@ def approve_reject_receipt(request, receipt_id):
             return redirect("manager_dashboard")
 
     return redirect("manager_dashboard")
+
+
+def filter_approved_receipts(receipts, category=None, start_date_str=None, end_date_str=None):
+    def parse_date(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d")
+        except:
+            return None
+
+    start_date = parse_date(start_date_str) if start_date_str else None
+    end_date = parse_date(end_date_str) if end_date_str else None
+
+    approved_receipts = [r for r in receipts if r.get("ApprovalStatus", "").upper() == "APPROVED"]
+
+    def receipt_in_date_range(receipt):
+        receipt_date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+        receipt_date = parse_date(receipt_date_str)
+        if not receipt_date:
+            return False
+        if start_date and receipt_date < start_date:
+            return False
+        if end_date and receipt_date > end_date:
+            return False
+        return True
+
+    if start_date or end_date:
+        approved_receipts = [r for r in approved_receipts if receipt_in_date_range(r)]
+
+    if category:
+        approved_receipts = [r for r in approved_receipts if r.get("Category", "").lower() == category.lower()]
+
+    return approved_receipts
+
+
+
+@login_required
+def get_approved_expense_total(request):
+    if not request.user.is_manager:
+        return redirect("view_receipts")
+
+    user_id = request.GET.get("user_id") or str(request.user.id)
+    category = request.GET.get("category")
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date")
+
+    receipts = get_user_receipts(user_id)
+    approved_receipts = filter_approved_receipts(receipts, category, start_date_str, end_date_str)
+
+    total = 0.0
+    for receipt in approved_receipts:
+        try:
+            total += float(receipt.get("TotalCost", 0))
+        except (ValueError, TypeError) as e:
+            print(f"Error parsing TotalCost: {e}")
+
+    return JsonResponse({
+        "total": round(total, 2),
+        "approved_receipts": approved_receipts
+    })
+
+
+@login_required
+def export_approved_expenses_csv(request):
+    if not request.user.is_manager:
+        return redirect("view_receipts")
+
+    user_id = request.GET.get("user_id") or str(request.user.id)
+    category = request.GET.get("category")
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date")
+
+    receipts = get_user_receipts(user_id)
+    approved_receipts = filter_approved_receipts(receipts, category, start_date_str, end_date_str)
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="approved_expenses.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(["ReceiptID", "Date", "Category", "TotalCost", "ApprovalStatus"])
+
+    for receipt in approved_receipts:
+        writer.writerow([
+            receipt.get("ReceiptID", ""),
+            receipt.get("Date") or receipt.get("ReceiptDate", ""),
+            receipt.get("Category", ""),
+            receipt.get("TotalCost", ""),
+            receipt.get("ApprovalStatus", "")
+        ])
+
+    return response
 
 
 
