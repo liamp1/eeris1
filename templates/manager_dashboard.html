@@ -79,8 +79,15 @@
                         </select>
                     </div>
                     <div class="d-flex justify-content-between">
-                        <button type="button" class="btn btn-primary">Export to CSV</button>
+                        <button type="button" class="btn btn-primary" id="exportCsvBtn">Export to CSV</button>
                         <button type="button" class="btn btn-secondary">Export to PDF</button>
+                        <button type="button" id="fetchApprovedTotal" class="btn btn-outline-success">
+                            Get Approved Total <!-- New addition-->
+                        </button>
+                        
+                        <!-- Show total here -->
+                        <div id="approvedTotalOutput" class="mt-3 font-weight-bold text-success"></div>
+                        
                     </div>
                 </form>
             </div>
@@ -203,7 +210,6 @@
                             document.getElementById("modalDate").textContent = data.Date || "N/A";
                             document.getElementById("modalCategory").textContent = data.Category || "N/A";
 
-
                             document.getElementById("managerReviewForm").action = `/receipts/manager/action/${receiptID}/`;
 
                             document.getElementById("modalManagerComment").value = "";
@@ -211,9 +217,77 @@
                             $("#receiptModal").modal("show");
                         }
                     })
-                    .catch(error => console.error("Error fetching receipt details:", error));
+                    .catch(error => {
+                        console.error("Error fetching receipt details:", error);
+                    });
             });
         });
+
+        document.getElementById("fetchApprovedTotal").addEventListener("click", function () {
+    const employeeId = document.getElementById("employeeFilter").value.trim();
+    const category = document.getElementById("categoryFilter").value.trim();
+    const startDate = document.getElementById("startDate").value;
+    const endDate = document.getElementById("endDate").value;
+
+    if (!employeeId) {
+        alert("Please enter an Employee ID.");
+        return;
+    }
+
+    const url = new URL("/receipts/get_approved_expense_total/", window.location.origin);
+    url.searchParams.append("user_id", employeeId);
+    if (category) {
+        url.searchParams.append("category", category);
+    }
+    if (startDate) {
+        url.searchParams.append("start_date", startDate);
+    }
+    if (endDate) {
+        url.searchParams.append("end_date", endDate);
+    }
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.total !== undefined) {
+                const formatted = `$${data.total.toFixed(2)}`;
+                document.getElementById("approvedTotalOutput").textContent = `Total Approved Expenses: ${formatted}`;
+            } else {
+                document.getElementById("approvedTotalOutput").textContent = "Could not calculate total.";
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching approved total:", error);
+            document.getElementById("approvedTotalOutput").textContent = "Error retrieving data.";
+        });
+});
+
+document.getElementById("exportCsvBtn").addEventListener("click", function () {
+            const rows = [["UserID", "ReceiptID", "Vendor", "TotalCost", "Date", "Status", "ManagerComment"]];
+            document.querySelectorAll(".card").forEach(card => {
+                const user = card.querySelector(".card-text:nth-child(1)")?.textContent.split(":")[1]?.trim() || "";
+                const id = card.querySelector(".card-text:nth-child(2)")?.textContent.split(":")[1]?.trim() || "";
+                const vendor = card.querySelector(".card-text:nth-child(3)")?.textContent.split(":")[1]?.trim() || "";
+                const total = card.querySelector(".card-text:nth-child(4)")?.textContent.split(":")[1]?.trim() || "";
+                const date = card.querySelector(".card-text:nth-child(5)")?.textContent.split(":")[1]?.trim() || "";
+                const status = card.querySelector(".card-text:nth-child(6)")?.textContent.split(":")[1]?.trim() || "";
+                const commentEl = card.querySelector(".card-text:nth-child(7)");
+                const comment = commentEl ? commentEl.textContent.split(":")[1]?.trim() : "";
+
+                rows.push([user, id, vendor, total, date, status, comment]);
+            });
+
+            const csvContent = "data:text/csv;charset=utf-8," + rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "expense_report.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+
 
         document.getElementById("managerReviewForm").addEventListener("submit", function (event) {
             const action = document.activeElement.value;
@@ -225,5 +299,6 @@
         });
     });
 </script>
+
 
 {% endblock %}
