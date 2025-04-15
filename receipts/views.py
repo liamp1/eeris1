@@ -19,6 +19,7 @@ from datetime import datetime
 import csv
 from io import StringIO
 from django.http import HttpResponse
+from django.shortcuts import redirect
 
 
 
@@ -148,26 +149,41 @@ def get_approved_expense_total(request):
     })
 
 
+
 @login_required
 def export_approved_expenses_csv(request):
     if not request.user.is_manager:
         return redirect("view_receipts")
 
-    user_id = request.GET.get("user_id") or str(request.user.id)
-    category = request.GET.get("category")
+    # Extract dates from query parameters
     start_date_str = request.GET.get("start_date")
     end_date_str = request.GET.get("end_date")
 
-    receipts = get_user_receipts(user_id)
-    approved_receipts = filter_approved_receipts(receipts, category, start_date_str, end_date_str)
+    # Get only approved receipts from DynamoDB
+    approved_receipts = get_receipts_by_status("APPROVED")
 
+    # Filter based on provided date range (category & user_id removed)
+    approved_receipts = filter_approved_receipts(
+        approved_receipts, category=None, start_date_str=start_date_str, end_date_str=end_date_str
+    )
+
+    print(f"[DEBUG] Retrieved {len(approved_receipts)} approved receipts after date filtering")
+
+    # Prepare CSV response
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="approved_expenses.csv"'
 
     writer = csv.writer(response)
     writer.writerow(["ReceiptID", "Date", "Category", "TotalCost", "ApprovalStatus"])
 
+    total_cost = 0.0
     for receipt in approved_receipts:
+        try:
+            cost = float(receipt.get("TotalCost", 0))
+            total_cost += cost
+        except (ValueError, TypeError) as e:
+            print(f"[DEBUG] Error parsing TotalCost: {e}")
+
         writer.writerow([
             receipt.get("ReceiptID", ""),
             receipt.get("Date") or receipt.get("ReceiptDate", ""),
@@ -176,10 +192,11 @@ def export_approved_expenses_csv(request):
             receipt.get("ApprovalStatus", "")
         ])
 
+    # Write total row at the bottom
+    writer.writerow([])
+    writer.writerow(["", "", "", "Total Cost:", f"{round(total_cost, 2)}"])
+
     return response
-
-
-
 
 
 
