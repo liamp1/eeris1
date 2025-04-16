@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Receipt{% endblock %}
+
+{% block content %}
+<style>
+    .card {
+        transition: transform 0.2s ease-in-out;
+    }
+    .card:hover {
+        transform: scale(1.01);
+    }
+</style>
+
+<div class="container mt-4">
+    <!-- Receipt Upload Form -->
+    <h2 class="mb-4">Upload Receipt</h2>
+    <form id="upload-form" method="POST" action="{% url 'upload_receipt' %}" enctype="multipart/form-data" class="mb-4">
+        {% csrf_token %}
+        <div class="form-group">
+            <input type="file" id="receipt-file-input" name="receipt_image" class="form-control-file" accept="image/*" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+
+
+    <!-- Status Filter Dropdown -->
+    <form method="get" class="mb-3">
+        <label for="statusFilter"><strong>Filter by Status:</strong></label>
+        <select name="status" id="statusFilter" class="form-select w-auto d-inline-block" onchange="this.form.submit()">
+            <option value="ALL" {% if selected_status == "ALL" %}selected{% endif %}>All</option>
+            <option value="PENDING" {% if selected_status == "PENDING" %}selected{% endif %}>Pending</option>
+            <option value="APPROVED" {% if selected_status == "APPROVED" %}selected{% endif %}>Approved</option>
+            <option value="REJECTED" {% if selected_status == "REJECTED" %}selected{% endif %}>Rejected</option>
+        </select>
+    </form>
+
+    <!-- Uploaded Receipts Section -->
+    <div class="mb-3">
+        <h3>Your Uploaded Receipts</h3>
+        {% if not receipts %}
+            <p class="text-muted">No receipts uploaded yet.</p>
+        {% endif %}
+    </div>
+    
+    <div id="receipt-list" class="row">
+        {% for receipt in receipts %}
+            <div class="col-md-4 mb-4">
+                <div class="card position-relative">
+                    <!-- Delete Button -->
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2" onclick="confirmDelete('{{ receipt.ReceiptID }}')">&times;</button>
+                    </div>
+                    <img src="{{ receipt.image_url }}" class="card-img-top receipt-thumbnail"
+                        data-receipt-id="{{ receipt.ReceiptID }}" alt="Receipt Image" style="cursor: pointer;">
+                    <div class="card-body">
+                        <p class="card-text"><strong>ID:</strong> {{ receipt.ReceiptID }}</p>
+                        <p class="card-text"><strong>Vendor:</strong> {{ receipt.Vendor }}</p>
+                    
+                        {% if receipt.ApprovalStatus == "APPROVED" %}
+                            <p class="card-text text-success">
+                                <strong>Status:</strong> Approved
+                                {% if receipt.ManagerComment %}
+                                    <br><strong>Comment:</strong> {{ receipt.ManagerComment }}
+                                {% endif %}
+                            </p>
+                        {% elif receipt.ApprovalStatus == "REJECTED" %}
+                            <p class="card-text text-danger">
+                                <strong>Status:</strong> Rejected
+                                {% if receipt.ManagerComment %}
+                                    <br><strong>Comment:</strong> {{ receipt.ManagerComment }}
+                                {% endif %}
+                            </p>
+                        {% else %}
+                            <p class="card-text text-warning"><strong>Status:</strong> Waiting Approval</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Modal -->
+    <div class="modal fade" id="receiptModal" tabindex="-1" role="dialog" aria-labelledby="receiptModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="receiptModalLabel">Edit Receipt</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="updateReceiptForm">
+                        {% csrf_token %}
+
+                        <!-- Receipt Data -->
+                        <!-- <p><strong>User ID:</strong> <span id="modalUserID"></span></p> -->
+                        <p><strong>Receipt ID:</strong> <span id="modalReceiptID"></span></p>
+                        <p><strong>Upload Date:</strong> <span id="modalUploadDate"></span></p>
+                        
+                        <!-- Vendor Data -->
+                        <div class="form-group">
+                            <label for="modalVendor">Vendor:</label>
+                            <input type="text" id="modalVendor" name="Vendor" class="form-control">
+                        </div>
+
+                        <!-- TotalCost Data -->
+                        <div class="form-group">
+                            <label for="modalTotal">Total ($):</label>
+                            <input type="text" id="modalTotalCost" name="TotalCost" class="form-control">
+                        </div>
+
+                        <!-- Receipt Date Data -->
+                        <div class="form-group">
+                            <label for="modalDate">Date:</label>
+                            <input type="date" id="modalDate" name="Date" class="form-control">
+                        </div>
+
+                        <!-- Category of Receipt -->
+                        <div class="form-group">
+                            <label for="modalCategory">Category:</label>
+                            <input type="text" id="modalCategory" name="Category" class="form-control">
+                        </div>
+
+                        <button type="submit" class="btn btn-success">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    // JavaScript for Delete Confirmation
+    function confirmDelete(receiptId) {
+        if (confirm("Are you sure you want to delete this receipt?")) {
+            fetch(`/receipts/delete/${receiptId}/`, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": "{{ csrf_token }}",
+                    "Content-Type": "application/json"
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    location.reload();  // refresh page after deletion
+                } else {
+                    response.json().then(data => alert("Error: " + data.error));
+                }
+            })
+            .catch(error => alert("Network error: " + error));
+        }
+    }
+
+    // Fill in data inside Modal
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
+            img.addEventListener("click", function () {
+                let receiptID = this.getAttribute("data-receipt-id");
+
+                fetch(`/receipts/details/${receiptID}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            alert("Error: " + data.error);
+                        } else {
+                            // document.getElementById("modalUserID").textContent = data.UserID;
+                            document.getElementById("modalReceiptID").textContent = data.ReceiptID;
+                            document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
+
+                            document.getElementById("modalVendor").value = data.Vendor || "";
+                            document.getElementById("modalTotalCost").value = data.TotalCost || ""; 
+                            document.getElementById("modalDate").value = data.Date || "";
+                            document.getElementById("modalCategory").value = data.Category || "";
+
+                            $("#receiptModal").modal("show");
+                        }
+                    })
+                    .catch(error => console.error("Error fetching receipt details:", error));
+            });
+        });
+
+        // If new data in modal, update the object
+        document.getElementById("updateReceiptForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+            let receiptID = document.getElementById("modalReceiptID").textContent;  
+            let formData = new FormData(this);
+
+            fetch(`/receipts/update/${receiptID}/`, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value 
+                },
+                body: new URLSearchParams(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert("Error: " + data.error);
+                } else {
+                    alert("Receipt updated successfully");
+                    location.reload();
+                }
+            })
+            .catch(error => console.error("Error updating receipt:", error));
+        });
+    });
+
+</script>
+
+<!-- WebSocket code for auto-refresh -->
+<script>
+    let socket = null;
+    
+    // Function to connect to WebSocket
+    function connectWebSocket() {
+        // Close existing socket if any
+        if (socket) {
+            socket.close();
+        }
+        
+        // Connect to WebSocket
+        socket = new WebSocket(`ws://${window.location.host}/ws/receipts/`);
+        
+        socket.onopen = function(e) {
+            console.log("WebSocket connected");
+            
+            // Check if we have a pending receipt to poll for
+            const pendingReceiptId = localStorage.getItem('pendingReceiptId');
+            const pendingReceiptTime = localStorage.getItem('pendingReceiptTime');
+            
+            // Only poll if the receipt was uploaded in the last 10 minutes
+            const isFresh = pendingReceiptTime && 
+                (new Date().getTime() - pendingReceiptTime < 10 * 60 * 1000);
+                
+            if (pendingReceiptId && isFresh) {
+                console.log(`Found pending receipt: ${pendingReceiptId}`);
+                // Start polling for this receipt
+                socket.send(JSON.stringify({
+                    'type': 'start_polling',
+                    'receipt_id': pendingReceiptId
+                }));
+            }
+        };
+        
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log("WebSocket message received:", data);
+            
+            if (data.type === 'data_available') {
+                // Data is available, reload the page
+                console.log(`Receipt ${data.receipt_id} data is available!`);
+                localStorage.removeItem('pendingReceiptId');
+                localStorage.removeItem('pendingReceiptTime');
+                window.location.reload();
+            } else if (data.type === 'timeout') {
+                console.log(`Timed out waiting for receipt ${data.receipt_id}`);
+                localStorage.removeItem('pendingReceiptId');
+                localStorage.removeItem('pendingReceiptTime');
+            }
+        };
+        
+        socket.onclose = function(e) {
+            console.log("WebSocket disconnected, reconnecting in 5 seconds");
+            // Try to reconnect in 5 seconds
+            setTimeout(connectWebSocket, 5000);
+        };
+        
+        socket.onerror = function(e) {
+            console.error("WebSocket error:", e);
+        };
+    }
+    
+    // Add the WebSocket functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        // Connect to WebSocket
+        connectWebSocket();
+        
+        // Handle form submission
+        const uploadForm = document.getElementById('upload-form');
+        
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function() {
+                // Get the file input element
+                const fileInput = document.getElementById('receipt-file-input');
+                
+                if (fileInput && fileInput.files.length > 0) {
+                    // Store the filename (which becomes the receipt ID)
+                    const receiptId = fileInput.files[0].name;
+                    
+                    // Store in localStorage so we can retrieve after page reload
+                    localStorage.setItem('pendingReceiptId', receiptId);
+                    localStorage.setItem('pendingReceiptTime', new Date().getTime());
+                    
+                    console.log(`Uploaded receipt: ${receiptId}`);
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
