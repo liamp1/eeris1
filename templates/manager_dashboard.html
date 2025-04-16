@@ -80,13 +80,12 @@
                     </div>-->
                     <div class="d-flex justify-content-between">
                         <button type="button" class="btn btn-primary" id="exportCsvBtn">Export to CSV</button>
-                        <button type="button" class="btn btn-secondary">Export to PDF</button>
+                        <!-- <button type="button" class="btn btn-secondary">Export to PDF</button>
                         <button type="button" id="fetchApprovedTotal" class="btn btn-outline-success">
-                            Get Approved Total <!-- New addition-->
+                            Get Approved Total 
                         </button>
                         
-                        <!-- Show total here -->
-                        <div id="approvedTotalOutput" class="mt-3 font-weight-bold text-success"></div>
+                        <div id="approvedTotalOutput" class="mt-3 font-weight-bold text-success"></div> -->
                         
                     </div>
                 </form>
@@ -223,44 +222,44 @@
             });
         });
 
-        document.getElementById("fetchApprovedTotal").addEventListener("click", function () {
-    const employeeId = document.getElementById("employeeFilter").value.trim();
-    const category = document.getElementById("categoryFilter").value.trim();
-    const startDate = document.getElementById("startDate").value;
-    const endDate = document.getElementById("endDate").value;
+//         document.getElementById("fetchApprovedTotal").addEventListener("click", function () {
+//     const employeeId = document.getElementById("employeeFilter").value.trim();
+//     const category = document.getElementById("categoryFilter").value.trim();
+//     const startDate = document.getElementById("startDate").value;
+//     const endDate = document.getElementById("endDate").value;
 
-    if (!employeeId) {
-        alert("Please enter an Employee ID.");
-        return;
-    }
+//     if (!employeeId) {
+//         alert("Please enter an Employee ID.");
+//         return;
+//     }
 
-    const url = new URL("/receipts/get_approved_expense_total/", window.location.origin);
-    url.searchParams.append("user_id", employeeId);
-    if (category) {
-        url.searchParams.append("category", category);
-    }
-    if (startDate) {
-        url.searchParams.append("start_date", startDate);
-    }
-    if (endDate) {
-        url.searchParams.append("end_date", endDate);
-    }
+//     const url = new URL("/receipts/get_approved_expense_total/", window.location.origin);
+//     url.searchParams.append("user_id", employeeId);
+//     if (category) {
+//         url.searchParams.append("category", category);
+//     }
+//     if (startDate) {
+//         url.searchParams.append("start_date", startDate);
+//     }
+//     if (endDate) {
+//         url.searchParams.append("end_date", endDate);
+//     }
 
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.total !== undefined) {
-                const formatted = `$${data.total.toFixed(2)}`;
-                document.getElementById("approvedTotalOutput").textContent = `Total Approved Expenses: ${formatted}`;
-            } else {
-                document.getElementById("approvedTotalOutput").textContent = "Could not calculate total.";
-            }
-        })
-        .catch(error => {
-            console.error("Error fetching approved total:", error);
-            document.getElementById("approvedTotalOutput").textContent = "Error retrieving data.";
-        });
-});
+//     fetch(url)
+//         .then(response => response.json())
+//         .then(data => {
+//             if (data.total !== undefined) {
+//                 const formatted = `$${data.total.toFixed(2)}`;
+//                 document.getElementById("approvedTotalOutput").textContent = `Total Approved Expenses: ${formatted}`;
+//             } else {
+//                 document.getElementById("approvedTotalOutput").textContent = "Could not calculate total.";
+//             }
+//         })
+//         .catch(error => {
+//             console.error("Error fetching approved total:", error);
+//             document.getElementById("approvedTotalOutput").textContent = "Error retrieving data.";
+//         });
+// });
 
 document.getElementById("exportCsvBtn").addEventListener("click", function () {
     const startDate = document.getElementById("startDate").value;

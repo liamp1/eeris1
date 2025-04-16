@@ -1,4 +1,46 @@
-{% extends "base.html" %} {% block title %} Home Page {% endblock %}
+{% extends "base.html" %}
+{% block title %}Welcome to EERIS{% endblock %}
+
 {% block content %}
-<h1>This is the home page</h1>
+<div class="container mt-4">
+    <div class="jumbotron bg-light p-5 rounded shadow-sm">
+        <h1 class="display-5">Welcome to EERIS</h1>
+        <p class="lead">Employee Expense Reporting Information System</p>
+        <hr class="my-4">
+        <p class="mb-4">Track, upload, and manage your expense receipts securely and easily.</p>
+        <a class="btn btn-primary btn-lg" href="{% url 'upload_receipt' %}" role="button">Upload Receipt</a>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Upload Receipts</h5>
+                    <p class="card-text">Easily upload receipts for expense tracking and reimbursement.</p>
+                    <a href="{% url 'upload_receipt' %}" class="btn btn-outline-primary">Go to Upload</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Receipt History</h5>
+                    <p class="card-text">View and manage all your previously submitted receipts.</p>
+                    <a href="{% url 'view_receipts' %}" class="btn btn-outline-secondary">View History</a>
+                </div>
+            </div>
+        </div>
+        {% if user.is_manager %}
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Manager Dashboard</h5>
+                    <p class="card-text">Review and approve or reject employee expense submissions.</p>
+                    <a href="{% url 'manager_dashboard' %}" class="btn btn-outline-success">Dashboard</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

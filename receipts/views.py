@@ -254,9 +254,19 @@ def view_receipts(request):
     for receipt in receipts:
         receipt["image_url"] = generate_presigned_url(user_id, receipt["ReceiptID"])
 
+    # Extract unique categories from all receipts
+    categories = []
+    unique_categories = set()
+    for receipt in receipts:
+        category = receipt.get("Category")
+        if category and category not in unique_categories:
+            unique_categories.add(category)
+            categories.append({"name": category})
+
     return render(request, "receipts/upload_receipt.html", {
         "receipts": receipts,
-        "selected_status": selected_status
+        "selected_status": selected_status,
+        "categories": categories
     })
 
 

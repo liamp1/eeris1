@@ -126,6 +126,13 @@
                         <div class="form-group">
                             <label for="modalCategory">Category:</label>
                             <input type="text" id="modalCategory" name="Category" class="form-control">
+                            
+                            <!-- Add this div to hold category buttons -->
+                            <div class="mt-2" id="category-buttons">
+                                {% for category in categories %}
+                                <button type="button" class="btn btn-outline-primary m-1" onclick="selectCategory('{{ category.name }}')">{{ category.name }}</button>
+                                {% endfor %}
+                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-success">Save Changes</button>
@@ -138,6 +145,18 @@
 
 
 <script>
+    function selectCategory(categoryName) {
+    // Update the value of the category input field
+    const categoryInput = document.getElementById('modalCategory');
+    if (categoryInput) {
+        categoryInput.value = categoryName;
+        console.log(`Category selected: ${categoryName}`); // Debug log
+    } else {
+        console.error('Category input field not found!');
+    }
+}
+
+
     // JavaScript for Delete Confirmation
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
