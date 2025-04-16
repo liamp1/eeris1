@@ -20,7 +20,9 @@ import csv
 from io import StringIO
 from django.http import HttpResponse
 from django.shortcuts import redirect
+from django.contrib import messages
 
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg"]
 
 
 @login_required
@@ -208,31 +210,33 @@ def export_approved_expenses_csv(request):
 # Divided the og function into two, for clarity
 @login_required
 def upload_receipt(request):
-
-    print("DEBUG: upload_receipt view is being executed") # check if view runs
+    print("DEBUG: upload_receipt view is being executed")
     user_id = str(request.user.id)
 
     if request.method == "POST":
-        print("DEBUG: Received POST request")  # check if request is POST
+        print("DEBUG: Received POST request")
 
         if "receipt_image" in request.FILES:
+            image: UploadedFile = request.FILES["receipt_image"]
             print("DEBUG: File received")
-            
-            image: UploadedFile = request.FILES["receipt_image"]    # ensure image is passed as an UploadedFile object
-    
+
+            # Validate file content type
+            if image.content_type not in ALLOWED_IMAGE_TYPES:
+                print(f"Rejected upload: invalid content type {image.content_type}")
+                return JsonResponse({"error": "Invalid file type."}, status=400)
 
             print(f"Uploading file {image.name} to S3 for user {user_id}")
-            # Upload directly to S3, returns an object key of the new image
             object_key = upload_receipt_to_s3(image, user_id)
 
             if object_key:
-                print(f"Upload successful: {object_key}")  # debugging success case
+                print(f"Upload successful: {object_key}")
                 return redirect("view_receipts")
             else:
-                print("Upload failed!")  # debugging failure case
+                print("Upload failed!")
+                return JsonResponse({"error": "Failed to upload file."}, status=500)
         else:
             print("DEBUG: no file found in request")
-    
+
     return redirect("view_receipts")
 
 
