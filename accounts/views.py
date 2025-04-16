@@ -1,6 +1,8 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, authenticate, logout
-from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm
+from .forms import CustomUserCreationForm
+
 
 # Create your views here.
 
@@ -9,14 +11,15 @@ def home(request):
 
 def register(request):
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            login(request, user)  # log in the user immediately after registration
-            return redirect("upload_receipt")  # redirect to receipts after login
+            login(request, user)
+            return redirect("upload_receipt")
     else:
-        form = UserCreationForm()
+        form = CustomUserCreationForm()
     return render(request, "accounts/register.html", {"form": form})
+
 
 def user_login(request):
     if request.method == "POST":
@@ -24,7 +27,7 @@ def user_login(request):
         if form.is_valid():
             user = form.get_user()
             login(request, user)
-            return redirect("upload_receipt")
+            return redirect("home")
     else:
         form = AuthenticationForm()
     return render(request, "accounts/login.html", {"form": form})

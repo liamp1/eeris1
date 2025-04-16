@@ -4,7 +4,12 @@
 {% block content %}
 <div class="container mt-4">
     <div class="jumbotron bg-light p-5 rounded shadow-sm">
-        <h1 class="display-5">Welcome to EERIS</h1>
+        {% if user.is_authenticated %}
+            <h1 class="display-5">Welcome, {{ user.first_name | default:user.username }}</h1>
+        {% else %}
+            <h1 class="display-5">Welcome to EERIS</h1>
+        {% endif %}
+
         <p class="lead">Employee Expense Reporting Information System</p>
         <hr class="my-4">
         <p class="mb-4">Track, upload, and manage your expense receipts securely and easily.</p>
