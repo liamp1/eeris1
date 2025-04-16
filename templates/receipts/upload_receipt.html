@@ -23,18 +23,6 @@
         <button type="submit" class="btn btn-primary">Upload</button>
     </form>
 
-    <!-- Feedback Messages -->
-    {% if messages %}
-      {% for message in messages %}
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-          </button>
-        </div>
-      {% endfor %}
-    {% endif %}
-
 
     <!-- Status Filter Dropdown -->
     <form method="get" class="mb-3">
@@ -145,24 +133,6 @@
 
 
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const form = document.querySelector("form");
-        const fileInput = document.querySelector("input[name='receipt_image']");
-
-        form.addEventListener("submit", function (event) {
-            const file = fileInput.files[0];
-            if (file) {
-                const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/gif"];
-                if (!allowedTypes.includes(file.type)) {
-                    event.preventDefault(); // Stop form submission
-                    alert("Invalid file type. Only JPG, JPEG, PNG, or GIF image files are allowed.");
-                }
-            }
-        });
-    });
-
-
-
     // JavaScript for Delete Confirmation
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
@@ -289,6 +259,12 @@
                 console.log(`Timed out waiting for receipt ${data.receipt_id}`);
                 localStorage.removeItem('pendingReceiptId');
                 localStorage.removeItem('pendingReceiptTime');
+                alert('Receipt processing timed out. Please try refreshing the page in a moment.');
+            } else if (data.type === 'error') {
+                console.error(`Error with receipt ${data.receipt_id}: ${data.message}`);
+                localStorage.removeItem('pendingReceiptId');
+                localStorage.removeItem('pendingReceiptTime');
+                alert(`Error processing receipt: ${data.message}`);
             }
         };
         
@@ -308,23 +284,42 @@
         // Connect to WebSocket
         connectWebSocket();
         
-        // Handle form submission
+        // Handle form submission with validation
         const uploadForm = document.getElementById('upload-form');
         
         if (uploadForm) {
-            uploadForm.addEventListener('submit', function() {
+            uploadForm.addEventListener('submit', function(e) {
                 // Get the file input element
                 const fileInput = document.getElementById('receipt-file-input');
                 
                 if (fileInput && fileInput.files.length > 0) {
-                    // Store the filename (which becomes the receipt ID)
-                    const receiptId = fileInput.files[0].name;
+                    const file = fileInput.files[0];
                     
-                    // Store in localStorage so we can retrieve after page reload
+                    // Validate file format - check if it's an image
+                    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+                    
+                    if (!validImageTypes.includes(file.type)) {
+                        // Prevent form submission
+                        e.preventDefault();
+                        alert('Invalid file format. Please upload an image file (JPEG, PNG, GIF, etc.).');
+                        return;
+                    }
+                    
+                    // Check file size (max 10MB)
+                    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+                    if (file.size > maxSize) {
+                        // Prevent form submission
+                        e.preventDefault();
+                        alert('File is too large. Maximum size is 10MB.');
+                        return;
+                    }
+                    
+                    // If validation passes, store the filename for WebSocket polling
+                    const receiptId = file.name;
                     localStorage.setItem('pendingReceiptId', receiptId);
                     localStorage.setItem('pendingReceiptTime', new Date().getTime());
                     
-                    console.log(`Uploaded receipt: ${receiptId}`);
+                    console.log(`Valid receipt uploaded: ${receiptId}`);
                 }
             });
         }

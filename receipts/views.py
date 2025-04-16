@@ -10,7 +10,8 @@ from .AWS.aws_utils import (
     delete_receipt,
     update_receipt_metadata,  # New function to update DynamoDB metadata
     get_all_receipts,
-    get_receipts_by_status
+    get_receipts_by_status,
+    is_receipt_data_available,
 )
 import os
 from django.contrib.auth.decorators import login_required
@@ -221,9 +222,9 @@ def upload_receipt(request):
             print("DEBUG: File received")
 
             # Validate file content type
-            if image.content_type not in ALLOWED_IMAGE_TYPES:
-                print(f"Rejected upload: invalid content type {image.content_type}")
-                return JsonResponse({"error": "Invalid file type."}, status=400)
+            # if image.content_type not in ALLOWED_IMAGE_TYPES:
+            #     print(f"Rejected upload: invalid content type {image.content_type}")
+            #     return JsonResponse({"error": "Invalid file type."}, status=400)
 
             print(f"Uploading file {image.name} to S3 for user {user_id}")
             object_key = upload_receipt_to_s3(image, user_id)

@@ -46,9 +46,26 @@ def upload_receipt_to_s3(file_path, user_id):
         return object_key
 
     except Exception as e:
+          print(f"Error uploading to S3: {e}")
+          return None
+def upload_receipt_to_s3(image: UploadedFile, user_id: str) -> Optional[str]:
+
+    object_key: str = f"receipts/{user_id}/{image.name}"
+    content_type: str = (
+        image.content_type
+        or mimetypes.guess_type(image.name)[0]
+        or "application/octet-stream"
+    )
+
+    try:
+        s3.upload_fileobj(
+            image, BUCKET_NAME, object_key, ExtraArgs={"ContentType": content_type}
+        )
+
+        return object_key  # Return the S3 object key
+    except Exception as e:
         print(f"Error uploading to S3: {e}")
         return None
-
 
 def update_receipt_metadata(user_id: str, receipt_id: str, updated_data: dict) -> bool:
     try:
