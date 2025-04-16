@@ -380,3 +380,15 @@ def update_receipt_view(request, receipt_id):
         return JsonResponse({"error": "Failed to update receipt"}, status=500)
 
     return JsonResponse({"error": "Invalid request"}, status=400)
+
+@login_required
+def check_receipt_data(request, receipt_id):
+   """Check if receipt data is available in DynamoDB."""
+   user_id = str(request.user.id)
+  
+   # Use the new function to check if data is available
+   is_data_available = is_receipt_data_available(user_id, receipt_id)
+  
+   print(f"DEBUG: Receipt {receipt_id} data available: {is_data_available}")
+  
+   return JsonResponse({"dataAvailable": is_data_available})

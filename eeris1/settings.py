@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "receipts",
     "accounts",
     "storages",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -95,8 +96,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'eeris1.wsgi.application'
+ASGI_APPLICATION = 'eeris1.asgi.application'
+
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
+
 
 
 # Database

@@ -154,3 +154,23 @@ def get_receipts_by_status(status: str):
         print(f"Error fetching receipts by status: {e}")
         return []
 
+def is_receipt_data_available(user_id: str, receipt_id: str) -> bool:
+   """
+   Check if a receipt has been processed and its data is available in DynamoDB.
+   Returns True only if the receipt exists AND has Textract data.
+   """
+   try:
+       response = table.get_item(
+           Key={"UserID": user_id, "ReceiptID": receipt_id}
+       )
+      
+       # Check if the item exists and has Textract data (Vendor or TotalCost)
+       if "Item" in response:
+           item = response["Item"]
+           return "Vendor" in item or "TotalCost" in item
+      
+       return False
+   except Exception as e:
+       print(f"Error checking receipt data: {e}")
+       return False
+

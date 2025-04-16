@@ -15,10 +15,10 @@
 <div class="container mt-4">
     <!-- Receipt Upload Form -->
     <h2 class="mb-4">Upload Receipt</h2>
-    <form method="POST" action="{% url 'upload_receipt' %}" enctype="multipart/form-data" class="mb-4">
+    <form id="upload-form" method="POST" action="{% url 'upload_receipt' %}" enctype="multipart/form-data" class="mb-4">
         {% csrf_token %}
         <div class="form-group">
-            <input type="file" name="receipt_image" class="form-control-file" accept="image/*" required>
+            <input type="file" id="receipt-file-input" name="receipt_image" class="form-control-file" accept="image/*" required>
         </div>
         <button type="submit" class="btn btn-primary">Upload</button>
     </form>
@@ -43,10 +43,10 @@
         {% endif %}
     </div>
     
-    <div class="row">
+    <div id="receipt-list" class="row">
         {% for receipt in receipts %}
             <div class="col-md-4 mb-4">
-                <div class="card postition-relative">
+                <div class="card position-relative">
                     <!-- Delete Button -->
                     <div class="d-flex justify-content-end">
                         <button class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2" onclick="confirmDelete('{{ receipt.ReceiptID }}')">&times;</button>
@@ -74,15 +74,10 @@
                         {% else %}
                             <p class="card-text text-warning"><strong>Status:</strong> Waiting Approval</p>
                         {% endif %}
-
-
-
                     </div>
-                        
                 </div>
-                
             </div>
-            {% endfor %}
+        {% endfor %}
     </div>
 
     <!-- Modal -->
@@ -126,13 +121,6 @@
                         <div class="form-group">
                             <label for="modalCategory">Category:</label>
                             <input type="text" id="modalCategory" name="Category" class="form-control">
-                            
-                            <!-- Add this div to hold category buttons -->
-                            <div class="mt-2" id="category-buttons">
-                                {% for category in categories %}
-                                <button type="button" class="btn btn-outline-primary m-1" onclick="selectCategory('{{ category.name }}')">{{ category.name }}</button>
-                                {% endfor %}
-                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-success">Save Changes</button>
@@ -145,18 +133,6 @@
 
 
 <script>
-    function selectCategory(categoryName) {
-    // Update the value of the category input field
-    const categoryInput = document.getElementById('modalCategory');
-    if (categoryInput) {
-        categoryInput.value = categoryName;
-        console.log(`Category selected: ${categoryName}`); // Debug log
-    } else {
-        console.error('Category input field not found!');
-    }
-}
-
-
     // JavaScript for Delete Confirmation
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
@@ -232,5 +208,96 @@
         });
     });
 
+</script>
+
+<!-- WebSocket code for auto-refresh -->
+<script>
+    let socket = null;
+    
+    // Function to connect to WebSocket
+    function connectWebSocket() {
+        // Close existing socket if any
+        if (socket) {
+            socket.close();
+        }
+        
+        // Connect to WebSocket
+        socket = new WebSocket(`ws://${window.location.host}/ws/receipts/`);
+        
+        socket.onopen = function(e) {
+            console.log("WebSocket connected");
+            
+            // Check if we have a pending receipt to poll for
+            const pendingReceiptId = localStorage.getItem('pendingReceiptId');
+            const pendingReceiptTime = localStorage.getItem('pendingReceiptTime');
+            
+            // Only poll if the receipt was uploaded in the last 10 minutes
+            const isFresh = pendingReceiptTime && 
+                (new Date().getTime() - pendingReceiptTime < 10 * 60 * 1000);
+                
+            if (pendingReceiptId && isFresh) {
+                console.log(`Found pending receipt: ${pendingReceiptId}`);
+                // Start polling for this receipt
+                socket.send(JSON.stringify({
+                    'type': 'start_polling',
+                    'receipt_id': pendingReceiptId
+                }));
+            }
+        };
+        
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log("WebSocket message received:", data);
+            
+            if (data.type === 'data_available') {
+                // Data is available, reload the page
+                console.log(`Receipt ${data.receipt_id} data is available!`);
+                localStorage.removeItem('pendingReceiptId');
+                localStorage.removeItem('pendingReceiptTime');
+                window.location.reload();
+            } else if (data.type === 'timeout') {
+                console.log(`Timed out waiting for receipt ${data.receipt_id}`);
+                localStorage.removeItem('pendingReceiptId');
+                localStorage.removeItem('pendingReceiptTime');
+            }
+        };
+        
+        socket.onclose = function(e) {
+            console.log("WebSocket disconnected, reconnecting in 5 seconds");
+            // Try to reconnect in 5 seconds
+            setTimeout(connectWebSocket, 5000);
+        };
+        
+        socket.onerror = function(e) {
+            console.error("WebSocket error:", e);
+        };
+    }
+    
+    // Add the WebSocket functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        // Connect to WebSocket
+        connectWebSocket();
+        
+        // Handle form submission
+        const uploadForm = document.getElementById('upload-form');
+        
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function() {
+                // Get the file input element
+                const fileInput = document.getElementById('receipt-file-input');
+                
+                if (fileInput && fileInput.files.length > 0) {
+                    // Store the filename (which becomes the receipt ID)
+                    const receiptId = fileInput.files[0].name;
+                    
+                    // Store in localStorage so we can retrieve after page reload
+                    localStorage.setItem('pendingReceiptId', receiptId);
+                    localStorage.setItem('pendingReceiptTime', new Date().getTime());
+                    
+                    console.log(`Uploaded receipt: ${receiptId}`);
+                }
+            });
+        }
+    });
 </script>
 {% endblock %}
