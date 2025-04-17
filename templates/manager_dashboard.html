@@ -265,6 +265,11 @@ document.getElementById("exportCsvBtn").addEventListener("click", function () {
     const startDate = document.getElementById("startDate").value;
     const endDate = document.getElementById("endDate").value;
 
+    if (!startDate || !endDate) {
+        alert("Please enter both start and end dates."); 
+        return;
+    }
+
     fetch(`/receipts/export_csv/?start_date=${startDate}&end_date=${endDate}`)
         .then(response => {
             if (!response.ok) {
