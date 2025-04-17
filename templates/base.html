@@ -24,6 +24,7 @@
 
               {% if request.user.is_manager %}
               <li class="nav-item"><a class="nav-link" href="{% url 'manager_dashboard' %}">Manager Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link" href="{% url 'reports' %}">Reports</a></li>
               {% endif %}
 
 

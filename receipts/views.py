@@ -27,6 +27,16 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg"]
 
 
 @login_required
+def reports_view(request):
+    if not request.user.is_manager:
+        return redirect('view_receipts')  # or show 403
+
+    # TODO: Pull data from DynamoDB and generate visualizations
+    # You could use Plotly, Chart.js (via template), or matplotlib
+
+    return render(request, 'receipts/reports.html', {})
+
+@login_required
 def manager_dashboard(request):
     if not request.user.is_manager:
         return redirect("view_receipts")
@@ -222,9 +232,9 @@ def upload_receipt(request):
             print("DEBUG: File received")
 
             # Validate file content type
-            # if image.content_type not in ALLOWED_IMAGE_TYPES:
-            #     print(f"Rejected upload: invalid content type {image.content_type}")
-            #     return JsonResponse({"error": "Invalid file type."}, status=400)
+            if image.content_type not in ALLOWED_IMAGE_TYPES:
+                print(f"Rejected upload: invalid content type {image.content_type}")
+                return JsonResponse({"error": "Invalid file type."}, status=400)
 
             print(f"Uploading file {image.name} to S3 for user {user_id}")
             object_key = upload_receipt_to_s3(image, user_id)
