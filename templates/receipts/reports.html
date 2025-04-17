@@ -4,9 +4,404 @@
 
 <h2>Financial Reports and Visualizations</h2>
 
-<!-- Add chart placeholders here -->
-<canvas id="expensesOverTimeChart"></canvas>
+<style>
+    .card {
+        transition: transform 0.2s ease-in-out;
+        margin-bottom: 20px;
+    }
+    .card:hover {
+        transform: scale(1.01);
+    }
+    .metric-card {
+        text-align: center;
+        padding: 20px;
+    }
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    .metric-label {
+        color: #6c757d;
+        font-size: 1rem;
+    }
+    .chart-container {
+        height: 300px;
+        background-color: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
 
+<div class="container mt-4">
+    <!-- Date Range Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" action="">
+                <div class="row">
+                    <div class="col-md-5">
+                        <label for="start_date">Start Date:</label>
+                        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|default:'' }}">
+                    </div>
+                    <div class="col-md-5">
+                        <label for="end_date">End Date:</label>
+                        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|default:today }}">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary btn-block">Apply</button>
+                        <a href="{% url 'reports' %}" class="btn btn-secondary btn-block">Clear</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
+    <!-- Key Metrics Row -->
+    <div class="row">
+        <!-- Total Expenses -->
+        <div class="col-md-3">
+            <div class="card bg-primary text-white metric-card">
+                <div class="metric-value">${{ total_expense|default:'0.00' }}</div>
+                <div class="metric-label">Total Expenses</div>
+            </div>
+        </div>
+        
+        <!-- Approved Expenses -->
+        <div class="col-md-3">
+            <div class="card bg-success text-white metric-card">
+                <div class="metric-value">${{ approved_expense|default:'0.00' }}</div>
+                <div class="metric-label">Approved Expenses</div>
+            </div>
+        </div>
+        
+        <!-- Pending Expenses -->
+        <div class="col-md-3">
+            <div class="card bg-warning text-white metric-card">
+                <div class="metric-value">${{ pending_expense|default:'0.00' }}</div>
+                <div class="metric-label">Pending Expenses</div>
+            </div>
+        </div>
+        
+        <!-- Rejected Expenses -->
+        <div class="col-md-3">
+            <div class="card bg-danger text-white metric-card">
+                <div class="metric-value">${{ rejected_expense|default:'0.00' }}</div>
+                <div class="metric-label">Rejected Expenses</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Second Metrics Row -->
+    <div class="row">
+        <!-- Average Expense -->
+        <div class="col-md-4">
+            <div class="card metric-card">
+                <div class="metric-value">${{ avg_expense|default:'0.00' }}</div>
+                <div class="metric-label">Average Expense</div>
+            </div>
+        </div>
+        
+        <!-- Total Receipts -->
+        <div class="col-md-4">
+            <div class="card metric-card">
+                <div class="metric-value">{{ receipt_count|default:'0' }}</div>
+                <div class="metric-label">Total Receipts</div>
+            </div>
+        </div>
+        
+        <!-- Most Common Vendor -->
+        <div class="col-md-4">
+            <div class="card metric-card">
+                <div class="metric-value">{{ most_common_vendor|default:'None' }}</div>
+                <div class="metric-label">Most Common Vendor</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Charts Row -->
+    <div class="row mt-4">
+        <!-- Expenses by Category Chart -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Expenses by Category</h5>
+                </div>
+                <div class="card-body">
+                    <div id="categoryChart" class="chart-container">
+                        <p>Category chart will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Monthly Expenses Chart -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Monthly Expenses</h5>
+                </div>
+                <div class="card-body">
+                    <div id="monthlyChart" class="chart-container">
+                        <p>Monthly chart will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Additional Charts Row -->
+    <div class="row mt-4">
+        <!-- Approval Status Chart -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Expenses by Approval Status</h5>
+                </div>
+                <div class="card-body">
+                    <div id="statusChart" class="chart-container">
+                        <p>Status chart will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Top Spenders Chart -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Top Spenders</h5>
+                </div>
+                <div class="card-body">
+                    <div id="spendersChart" class="chart-container">
+                        <p>Top spenders chart will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity Table -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>User</th>
+                                <th>Vendor</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for receipt in recent_activity %}
+                            <tr>
+                                <td>{{ receipt.date }}</td>
+                                <td>{{ receipt.user_id }}</td>
+                                <td>{{ receipt.vendor }}</td>
+                                <td>${{ receipt.amount }}</td>
+                                <td>
+                                    {% if receipt.status == "APPROVED" %}
+                                    <span class="badge bg-success">Approved</span>
+                                    {% elif receipt.status == "REJECTED" %}
+                                    <span class="badge bg-danger">Rejected</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center">No recent activity</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Add Chart.js for visualizations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the charts when data is available
+        try {
+            // Safely parse the JSON data with default empty arrays
+            let categoryData = [];
+            let monthlyData = [];
+            let statusData = [];
+            let topSpenders = [];
+
+            try { categoryData = JSON.parse('{{ category_data|escapejs }}'); } catch (e) { console.error("Error parsing category data:", e); }
+            try { monthlyData = JSON.parse('{{ monthly_data|escapejs }}'); } catch (e) { console.error("Error parsing monthly data:", e); }
+            try { statusData = JSON.parse('{{ status_data|escapejs }}'); } catch (e) { console.error("Error parsing status data:", e); }
+            try { topSpenders = JSON.parse('{{ top_spenders|escapejs }}'); } catch (e) { console.error("Error parsing top spenders data:", e); }
+            
+            // Category Chart
+            if (document.getElementById('categoryChart') && categoryData && categoryData.length > 0) {
+                createCategoryChart(categoryData);
+            }
+            
+            // Monthly Chart
+            if (document.getElementById('monthlyChart') && monthlyData && monthlyData.length > 0) {
+                createMonthlyChart(monthlyData);
+            }
+            
+            // Status Chart
+            if (document.getElementById('statusChart') && statusData && statusData.length > 0) {
+                createStatusChart(statusData);
+            }
+            
+            // Top Spenders Chart
+            if (document.getElementById('spendersChart') && topSpenders && topSpenders.length > 0) {
+                createSpendersChart(topSpenders);
+            }
+        } catch (e) {
+            console.error("Error initializing charts:", e);
+        }
+    });
+    
+    function createCategoryChart(data) {
+        const ctx = document.getElementById('categoryChart');
+        ctx.innerHTML = '';
+        const canvas = document.createElement('canvas');
+        ctx.appendChild(canvas);
+        
+        new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: data.map(item => item.name),
+                datasets: [{
+                    data: data.map(item => item.amount),
+                    backgroundColor: [
+                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                        '#6f42c1', '#fd7e14', '#20c9a6', '#5a5c69', '#858796'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
+                }
+            }
+        });
+    }
+    
+    function createMonthlyChart(data) {
+        const ctx = document.getElementById('monthlyChart');
+        ctx.innerHTML = '';
+        const canvas = document.createElement('canvas');
+        ctx.appendChild(canvas);
+        
+        new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: data.map(item => item.name),
+                datasets: [{
+                    label: 'Monthly Expenses',
+                    data: data.map(item => item.amount),
+                    backgroundColor: '#4e73df'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function createStatusChart(data) {
+    const ctx = document.getElementById('statusChart');
+    ctx.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    ctx.appendChild(canvas);
+    
+    // Make sure all three statuses are represented with their respective colors
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(item => item.name),
+            datasets: [{
+                data: data.map(item => item.amount),
+                backgroundColor: [
+                    '#1cc88a',  // Approved - green
+                    '#f6c23e',  // Pending - yellow
+                    '#e74a3b'   // Rejected - red
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            return `${label}: $${value.toFixed(2)}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+    
+    function createSpendersChart(data) {
+    const ctx = document.getElementById('spendersChart');
+    ctx.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    ctx.appendChild(canvas);
+    
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: data.map(item => item.name), // Changed from user_id to name
+            datasets: [{
+                label: 'Total Spending',
+                data: data.map(item => item.total),
+                backgroundColor: '#4e73df'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
 {% endblock %}

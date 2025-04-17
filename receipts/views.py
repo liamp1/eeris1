@@ -16,7 +16,7 @@ from .AWS.aws_utils import (
 import os
 from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import UploadedFile
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 from io import StringIO
 from django.http import HttpResponse
@@ -24,17 +24,6 @@ from django.shortcuts import redirect
 from django.contrib import messages
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg"]
-
-
-@login_required
-def reports_view(request):
-    if not request.user.is_manager:
-        return redirect('view_receipts')  # or show 403
-
-    # TODO: Pull data from DynamoDB and generate visualizations
-    # You could use Plotly, Chart.js (via template), or matplotlib
-
-    return render(request, 'receipts/reports.html', {})
 
 @login_required
 def manager_dashboard(request):
@@ -73,11 +62,6 @@ def manager_dashboard(request):
         "receipts": all_receipts,
         "selected_status": selected_status
     })
-
-
-
-
-
 
 @login_required
 def approve_reject_receipt(request, receipt_id):
@@ -407,3 +391,256 @@ def check_receipt_data(request, receipt_id):
    print(f"DEBUG: Receipt {receipt_id} data available: {is_data_available}")
   
    return JsonResponse({"dataAvailable": is_data_available})
+
+
+@login_required
+def reports_view(request):
+    if not request.user.is_manager:
+        return redirect('view_receipts')
+
+     # Get all receipts
+    all_receipts = get_all_receipts()
+    from datetime import date
+    
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date") or date.today().strftime("%Y-%m-%d")
+
+    def parse_date(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d")
+        except:
+            return None
+
+    start_date = parse_date(start_date_str)
+    end_date = parse_date(end_date_str)
+
+    # Make end_date inclusive
+    if end_date:
+        end_date += timedelta(days=1)
+
+
+    if start_date or end_date:
+        def receipt_in_range(receipt):
+            receipt_date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+            receipt_date = parse_date(receipt_date_str)
+            if not receipt_date:
+                return False
+            if start_date and receipt_date < start_date:
+                return False
+            if end_date and receipt_date > end_date:
+                return False
+            return True
+
+        all_receipts = [r for r in all_receipts if receipt_in_range(r)]
+
+    
+    # Initialize counters
+    total_expense = 0
+    approved_expense = 0
+    pending_expense = 0
+    rejected_expense = 0
+    receipt_count = len(all_receipts)
+    
+    # For debugging - track receipts by status
+    status_counts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
+    status_amounts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
+    
+    # For category breakdown and monthly trends
+    categories = {}
+    monthly_expenses = {}
+    users_spending = {}
+    vendors = {}
+    
+
+    for i, receipt in enumerate(all_receipts[:5]):
+        print(f"Receipt {i+1}: {receipt.get('ReceiptID')}, Status: '{receipt.get('ApprovalStatus', '')}', Amount: {receipt.get('TotalCost', 0)}")
+    
+    # Process each receipt
+    for receipt in all_receipts:
+        status = receipt.get("ApprovalStatus", "").upper() or "PENDING"
+        total_cost = receipt.get("TotalCost", "N/A")
+        
+        # Update status counts
+        if status == "APPROVED":
+            status_counts["APPROVED"] += 1
+        elif status == "REJECTED":
+            status_counts["REJECTED"] += 1
+        elif status == "PENDING":
+            status_counts["PENDING"] += 1
+        else:
+            status_counts["UNKNOWN"] += 1
+        
+        # Handle amount calculation
+        if total_cost == "N/A":
+            # Treat N/A values as zero
+            amount = 0
+        else:
+            # Try to convert to float
+            try:
+                amount = float(total_cost)
+            except (ValueError, TypeError):
+                amount = 0
+        
+        # Update total expenses
+        total_expense += amount
+        
+        # Update status amounts
+        if status == "APPROVED":
+            approved_expense += amount
+            status_amounts["APPROVED"] += amount
+        elif status == "REJECTED":
+            rejected_expense += amount
+            status_amounts["REJECTED"] += amount
+        elif status == "PENDING":
+            pending_expense += amount
+            status_amounts["PENDING"] += amount
+        else:
+            status_amounts["UNKNOWN"] += amount
+            pending_expense += amount  # Group unknown with pending
+        
+        # Update category breakdown
+        category = receipt.get("Category", "Uncategorized")
+        if category in categories:
+            categories[category] += amount
+        else:
+            categories[category] = amount
+            
+        # Update monthly trends
+        date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+        if date_str:
+            try:
+                date = datetime.strptime(date_str, "%Y-%m-%d")
+                month_key = date.strftime("%Y-%m")
+                month_name = date.strftime("%b %Y")
+                
+                if month_key in monthly_expenses:
+                    monthly_expenses[month_key]["amount"] += amount
+                else:
+                    monthly_expenses[month_key] = {
+                        "name": month_name,
+                        "amount": amount
+                    }
+            except ValueError:
+                pass
+        
+        # Update user spending
+        user_id = receipt.get("UserID", "Unknown")
+        user_name = f"User {user_id}"
+            
+        # Use user_name as the key instead of user_id
+        if user_name in users_spending:
+            users_spending[user_name]["total"] += amount
+            users_spending[user_name]["count"] += 1
+        else:
+            users_spending[user_name] = {
+                "user_id": user_id,
+                "total": amount,
+                "count": 1,
+                "approved": 0,
+                "pending": 0,
+                "rejected": 0
+            }
+        
+        # Update user spending by status
+        if status == "APPROVED":
+            users_spending[user_name]["approved"] += amount
+        elif status == "REJECTED":
+            users_spending[user_name]["rejected"] += amount
+        elif status == "PENDING":
+            users_spending[user_name]["pending"] += amount
+            
+        # Update vendors
+        vendor = receipt.get("Vendor", "Unknown")
+        if vendor in vendors:
+            vendors[vendor] += 1
+        else:
+            vendors[vendor] = 1
+    
+   
+    # Calculate average expense
+    avg_expense = total_expense / receipt_count if receipt_count > 0 else 0
+    
+    # Find most common vendor
+    most_common_vendor = max(vendors.items(), key=lambda x: x[1])[0] if vendors else "None"
+    
+    # Sort monthly expenses by date
+    sorted_monthly = sorted(monthly_expenses.items(), key=lambda x: x[0])
+    monthly_data = [item[1] for item in sorted_monthly]
+    
+    # Sort categories by amount
+    category_data = [{"name": k, "amount": v} for k, v in categories.items()]
+    category_data.sort(key=lambda x: x["amount"], reverse=True)
+    
+    # Sort users by total spending
+    top_spenders = []
+    for user_name, data in users_spending.items():
+        top_spenders.append({
+            "name": user_name,
+            "user_id": data["user_id"],
+            "total": data["total"],
+            "count": data["count"],
+            "approved": data["approved"],
+            "pending": data["pending"],
+            "rejected": data["rejected"]
+        })
+    
+    top_spenders.sort(key=lambda x: x["total"], reverse=True)
+    top_spenders = top_spenders[:5]  # Limit to top 5
+    
+    # Create status data for chart
+    status_data = [
+        {"name": "Approved", "amount": approved_expense},
+        {"name": "Pending", "amount": pending_expense},
+        {"name": "Rejected", "amount": rejected_expense}
+    ]
+    
+    # Get recent activity (latest 5 receipts)
+    recent_receipts = sorted(
+        all_receipts, 
+        key=lambda x: x.get("UploadDate", ""), 
+        reverse=True
+    )[:5]
+    
+    # Format the recent receipts for display
+    formatted_recent = []
+    for r in recent_receipts:
+        date_str = r.get("Date") or r.get("ReceiptDate", "N/A")
+        try:
+            date = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            formatted_date = date_str
+            
+        # Get status with explicit normalization
+        raw_status = r.get("ApprovalStatus", "")
+        status = raw_status.upper() if raw_status else "PENDING"
+            
+        formatted_recent.append({
+            "date": formatted_date,
+            "user_id": r.get("UserID", "N/A"),
+            "vendor": r.get("Vendor", "N/A"),
+            "amount": r.get("TotalCost", "0.00"),
+            "status": status
+        })
+    
+    import json
+    
+    context = {
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "today": date.today().strftime("%Y-%m-%d"),
+        "total_expense": round(total_expense, 2),
+        "approved_expense": round(approved_expense, 2),
+        "pending_expense": round(pending_expense, 2),
+        "rejected_expense": round(rejected_expense, 2),
+        "avg_expense": round(avg_expense, 2),
+        "receipt_count": receipt_count,
+        "most_common_vendor": most_common_vendor,
+        "category_data": json.dumps(category_data),
+        "monthly_data": json.dumps(monthly_data),
+        "status_data": json.dumps(status_data),
+        "top_spenders": json.dumps(top_spenders),
+        "recent_activity": formatted_recent
+    }
+    
+    return render(request, 'receipts/reports.html', context)
