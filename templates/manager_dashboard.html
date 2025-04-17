@@ -118,7 +118,7 @@
                     </form>
 
                     <div class="card-body">
-                        <p class="card-text"><strong>User:</strong> {{ receipt.UserID }}</p>
+                        <p class="card-text"><strong>User:</strong> {{ receipt.UserName }}</p>
                         <p class="card-text"><strong>ID:</strong> {{ receipt.ReceiptID }}</p>
                         <p class="card-text"><strong>Vendor:</strong> {{ receipt.Vendor }}</p>
                         <p class="card-text"><strong>Total:</strong> ${{ receipt.TotalCost }}</p>
@@ -161,7 +161,7 @@
                         <input type="hidden" name="user_id" id="modalUserIDHidden">
 
                         <!-- Receipt Data -->
-                        <p><strong>User ID:</strong> <span id="modalUserID"></span></p>
+                        <p><strong>User:</strong> <span id="modalUserID"></span></p>
                         <p><strong>Receipt ID:</strong> <span id="modalReceiptID"></span></p>
                         <p><strong>Upload Date:</strong> <span id="modalUploadDate"></span></p>
                         <p><strong>Vendor:</strong> <span id="modalVendor"></span></p>
@@ -201,7 +201,7 @@
                             alert("Error: " + data.error);
                         } else {
                             document.getElementById("modalUserIDHidden").value = data.UserID;
-                            document.getElementById("modalUserID").textContent = data.UserID;
+                            document.getElementById("modalUserID").textContent = data.UserName || data.UserID;
                             document.getElementById("modalReceiptID").textContent = data.ReceiptID;
                             document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
                             document.getElementById("modalVendor").textContent = data.Vendor || "N/A";

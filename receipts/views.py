@@ -39,26 +39,31 @@ def manager_dashboard(request):
     else:
         all_receipts = get_receipts_by_status(selected_status)
 
-
     # Filter if a specific status is selected
     if selected_status != "ALL":
         all_receipts = [
             r for r in all_receipts
             if r.get("ApprovalStatus", "PENDING").upper() == selected_status
         ]
-    print("DEBUG: Selected status is", selected_status)
 
+    # Create a mapping of user IDs to user names
+    user_map = {}
+    for user in User.objects.all():
+        name = f"{user.first_name} {user.last_name}".strip()
+        user_map[str(user.id)] = name if name else user.username
 
-    # Sort to always show PENDING first, then APPROVED, then REJECTED
+    # Add user names to receipts
+    for receipt in all_receipts:
+        receipt["presigned_url"] = generate_presigned_url(receipt["UserID"], receipt["ReceiptID"])
+        receipt["UserName"] = user_map.get(receipt["UserID"], receipt["UserID"])  # Add this line
+
+    # Sort receipts
     def sort_key(receipt):
         status = receipt.get("ApprovalStatus", "PENDING").upper()
         order = {"PENDING": 0, "APPROVED": 1, "REJECTED": 2}
         return order.get(status, 3)
 
     all_receipts.sort(key=sort_key)
-
-    for r in all_receipts:
-        r["presigned_url"] = generate_presigned_url(r["UserID"], r["ReceiptID"])
 
     return render(request, "manager_dashboard.html", {
         "receipts": all_receipts,
@@ -341,8 +346,16 @@ def get_receipt_details(request, receipt_id):
     receipt_details = next((r for r in receipts if r["ReceiptID"] == receipt_id), None)
 
     if receipt_details:
+        # Create user map
+        user_map = {}
+        for user in User.objects.all():
+            name = f"{user.first_name} {user.last_name}".strip()
+            user_map[str(user.id)] = name if name else user.username
+
+    if receipt_details:
         response_data = {
             "UserID": receipt_details["UserID"],
+            "UserName": user_map.get(receipt_details["UserID"], receipt_details["UserID"]), 
             "ReceiptID": receipt_details["ReceiptID"],
             "Vendor": receipt_details.get("Vendor", "N/A"),
             "TotalCost": receipt_details.get("TotalCost", "N/A"),
@@ -400,10 +413,9 @@ def reports_view(request):
     if not request.user.is_manager:
         return redirect('view_receipts')
 
-     # Get all receipts
     all_receipts = get_all_receipts()
     from datetime import date
-    
+
     start_date_str = request.GET.get("start_date")
     end_date_str = request.GET.get("end_date") or date.today().strftime("%Y-%m-%d")
 
@@ -416,10 +428,12 @@ def reports_view(request):
     start_date = parse_date(start_date_str)
     end_date = parse_date(end_date_str)
 
-    # Make end_date inclusive
+    if start_date_str and end_date_str and start_date and end_date and start_date > end_date:
+        messages.error(request, "Start date cannot be after end date.")
+        return redirect("reports")
+
     if end_date:
         end_date += timedelta(days=1)
-
 
     if start_date or end_date:
         def receipt_in_range(receipt):
@@ -429,46 +443,35 @@ def reports_view(request):
                 return False
             if start_date and receipt_date < start_date:
                 return False
-            if end_date and receipt_date > end_date:
+            if end_date and receipt_date >= end_date:
                 return False
             return True
 
         all_receipts = [r for r in all_receipts if receipt_in_range(r)]
 
-    
-    # Initialize counters
     total_expense = 0
     approved_expense = 0
     pending_expense = 0
     rejected_expense = 0
     receipt_count = len(all_receipts)
-    
-    # For debugging - track receipts by status
+
     status_counts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
     status_amounts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
-    
-    # For category breakdown and monthly trends
+
     categories = {}
     monthly_expenses = {}
     users_spending = {}
     vendors = {}
 
-    # Create a mapping of user_id to full name or username
     user_map = {}
     for user in User.objects.all():
         name = f"{user.first_name} {user.last_name}".strip()
         user_map[str(user.id)] = name if name else user.username
-    
 
-    for i, receipt in enumerate(all_receipts[:5]):
-        print(f"Receipt {i+1}: {receipt.get('ReceiptID')}, Status: '{receipt.get('ApprovalStatus', '')}', Amount: {receipt.get('TotalCost', 0)}")
-    
-    # Process each receipt
     for receipt in all_receipts:
         status = receipt.get("ApprovalStatus", "").upper() or "PENDING"
         total_cost = receipt.get("TotalCost", "N/A")
-        
-        # Update status counts
+
         if status == "APPROVED":
             status_counts["APPROVED"] += 1
         elif status == "REJECTED":
@@ -477,25 +480,61 @@ def reports_view(request):
             status_counts["PENDING"] += 1
         else:
             status_counts["UNKNOWN"] += 1
-        
-        # Handle amount calculation
+
         if total_cost == "N/A":
-            # Treat N/A values as zero
             amount = 0
         else:
-            # Try to convert to float
             try:
                 amount = float(total_cost)
             except (ValueError, TypeError):
                 amount = 0
-        
-        # Update total expenses
+
         total_expense += amount
-        
-        # Update status amounts
+
         if status == "APPROVED":
             approved_expense += amount
             status_amounts["APPROVED"] += amount
+
+            category = receipt.get("Category", "Uncategorized")
+            if category in categories:
+                categories[category] += amount
+            else:
+                categories[category] = amount
+
+            date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+            if date_str:
+                try:
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    month_key = date_obj.strftime("%Y-%m")
+                    month_name = date_obj.strftime("%b %Y")
+
+                    if month_key in monthly_expenses:
+                        monthly_expenses[month_key]["amount"] += amount
+                    else:
+                        monthly_expenses[month_key] = {
+                            "name": month_name,
+                            "amount": amount
+                        }
+                except ValueError:
+                    pass
+
+            user_id = receipt.get("UserID", "Unknown")
+            user_name = user_map.get(str(user_id), f"User {user_id}")
+
+            if user_name in users_spending:
+                users_spending[user_name]["total"] += amount
+                users_spending[user_name]["count"] += 1
+                users_spending[user_name]["approved"] += amount
+            else:
+                users_spending[user_name] = {
+                    "user_id": user_id,
+                    "total": amount,
+                    "count": 1,
+                    "approved": amount,
+                    "pending": 0,
+                    "rejected": 0
+                }
+
         elif status == "REJECTED":
             rejected_expense += amount
             status_amounts["REJECTED"] += amount
@@ -504,127 +543,63 @@ def reports_view(request):
             status_amounts["PENDING"] += amount
         else:
             status_amounts["UNKNOWN"] += amount
-            pending_expense += amount  # Group unknown with pending
-        
-        # Update category breakdown
-        category = receipt.get("Category", "Uncategorized")
-        if category in categories:
-            categories[category] += amount
-        else:
-            categories[category] = amount
-            
-        # Update monthly trends
-        date_str = receipt.get("Date") or receipt.get("ReceiptDate")
-        if date_str:
-            try:
-                date = datetime.strptime(date_str, "%Y-%m-%d")
-                month_key = date.strftime("%Y-%m")
-                month_name = date.strftime("%b %Y")
-                
-                if month_key in monthly_expenses:
-                    monthly_expenses[month_key]["amount"] += amount
-                else:
-                    monthly_expenses[month_key] = {
-                        "name": month_name,
-                        "amount": amount
-                    }
-            except ValueError:
-                pass
-        
-        # Update user spending
-        user_id = receipt.get("UserID", "Unknown")
-        user_name = user_map.get(str(user_id), f"User {user_id}")  # 🔥 Correct name now
+            pending_expense += amount
 
-        # Use user_name as the key instead of user_id
-        if user_name in users_spending:
-            users_spending[user_name]["total"] += amount
-            users_spending[user_name]["count"] += 1
-        else:
-            users_spending[user_name] = {
-                "user_id": user_id,
-                "total": amount,
-                "count": 1,
-                "approved": 0,
-                "pending": 0,
-                "rejected": 0
-            }
-
-        # Update user spending by status
-        if status == "APPROVED":
-            users_spending[user_name]["approved"] += amount
-        elif status == "REJECTED":
-            users_spending[user_name]["rejected"] += amount
-        elif status == "PENDING":
-            users_spending[user_name]["pending"] += amount
-
-            
-        # Update vendors
         vendor = receipt.get("Vendor", "Unknown")
         if vendor in vendors:
             vendors[vendor] += 1
         else:
             vendors[vendor] = 1
-    
-   
-    # Calculate average expense
+
     approved_count = status_counts["APPROVED"]
     avg_expense = approved_expense / approved_count if approved_count > 0 else 0
-    
-    # Find most common vendor
     most_common_vendor = max(vendors.items(), key=lambda x: x[1])[0] if vendors else "None"
-    
-    # Sort monthly expenses by date
+
     sorted_monthly = sorted(monthly_expenses.items(), key=lambda x: x[0])
     monthly_data = [item[1] for item in sorted_monthly]
-    
-    # Sort categories by amount
+
     category_data = [{"name": k, "amount": v} for k, v in categories.items()]
     category_data.sort(key=lambda x: x["amount"], reverse=True)
-    
-    # Sort users by total spending
+
     top_spenders = []
     for user_name, data in users_spending.items():
         top_spenders.append({
             "name": user_name,
             "user_id": data["user_id"],
-            "total": data["total"],
+            "total": data["approved"],
             "count": data["count"],
             "approved": data["approved"],
             "pending": data["pending"],
             "rejected": data["rejected"]
         })
-    
+
     top_spenders.sort(key=lambda x: x["total"], reverse=True)
-    top_spenders = top_spenders[:5]  # Limit to top 5
-    
-    # Create status data for chart
+    top_spenders = top_spenders[:5]
+
     status_data = [
         {"name": "Approved", "amount": approved_expense},
         {"name": "Pending", "amount": pending_expense},
         {"name": "Rejected", "amount": rejected_expense}
     ]
-    
-    # Get recent activity (latest 5 receipts)
+
     recent_receipts = sorted(
-        all_receipts, 
-        key=lambda x: x.get("UploadDate", ""), 
+        all_receipts,
+        key=lambda x: x.get("UploadDate", ""),
         reverse=True
     )[:5]
-    
-    # Format the recent receipts for display
+
     formatted_recent = []
     for r in recent_receipts:
         date_str = r.get("Date") or r.get("ReceiptDate", "N/A")
         try:
-            date = datetime.strptime(date_str, "%Y-%m-%d")
-            formatted_date = date.strftime("%b %d, %Y")
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%b %d, %Y")
         except (ValueError, TypeError):
             formatted_date = date_str
-            
-        # Get status with explicit normalization
+
         raw_status = r.get("ApprovalStatus", "")
         status = raw_status.upper() if raw_status else "PENDING"
-            
+
         user_id = r.get("UserID", "N/A")
         user_name = user_map.get(str(user_id), f"User {user_id}")
 
@@ -635,9 +610,8 @@ def reports_view(request):
             "amount": r.get("TotalCost", "0.00"),
             "status": status
         })
-    
+
     import json
-    
     context = {
         "start_date": start_date_str,
         "end_date": end_date_str,
@@ -655,5 +629,5 @@ def reports_view(request):
         "top_spenders": json.dumps(top_spenders),
         "recent_activity": formatted_recent
     }
-    
+
     return render(request, 'receipts/reports.html', context)
