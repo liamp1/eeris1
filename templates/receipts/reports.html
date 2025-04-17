@@ -2,16 +2,16 @@
 {% block title %}Reports{% endblock %}
 {% block content %}
 
-<h2>Financial Reports and Visualizations</h2>
+<!-- <h2>Financial Reports and Visualizations</h2> -->
 
 <style>
     .card {
         transition: transform 0.2s ease-in-out;
         margin-bottom: 20px;
     }
-    .card:hover {
+    /* .card:hover {
         transform: scale(1.01);
-    }
+    } */
     .metric-card {
         text-align: center;
         padding: 20px;
@@ -202,7 +202,7 @@
                             {% for receipt in recent_activity %}
                             <tr>
                                 <td>{{ receipt.date }}</td>
-                                <td>{{ receipt.user_id }}</td>
+                                <td>{{ receipt.user_name }}</td>
                                 <td>{{ receipt.vendor }}</td>
                                 <td>${{ receipt.amount }}</td>
                                 <td>

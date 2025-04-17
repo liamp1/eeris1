@@ -22,8 +22,10 @@ from io import StringIO
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg"]
+User = get_user_model()
 
 @login_required
 def manager_dashboard(request):
@@ -252,7 +254,7 @@ def view_receipts(request):
 
     for receipt in receipts:
         receipt["image_url"] = generate_presigned_url(user_id, receipt["ReceiptID"])
-
+    
     # Extract unique categories from all receipts
     categories = []
     unique_categories = set()
@@ -265,7 +267,7 @@ def view_receipts(request):
     return render(request, "receipts/upload_receipt.html", {
         "receipts": receipts,
         "selected_status": selected_status,
-        "categories": categories
+        "categories": categories  # Add categories to the context
     })
 
 
@@ -450,6 +452,12 @@ def reports_view(request):
     monthly_expenses = {}
     users_spending = {}
     vendors = {}
+
+    # Create a mapping of user_id to full name or username
+    user_map = {}
+    for user in User.objects.all():
+        name = f"{user.first_name} {user.last_name}".strip()
+        user_map[str(user.id)] = name if name else user.username
     
 
     for i, receipt in enumerate(all_receipts[:5]):
@@ -525,8 +533,8 @@ def reports_view(request):
         
         # Update user spending
         user_id = receipt.get("UserID", "Unknown")
-        user_name = f"User {user_id}"
-            
+        user_name = user_map.get(str(user_id), f"User {user_id}")  # 🔥 Correct name now
+
         # Use user_name as the key instead of user_id
         if user_name in users_spending:
             users_spending[user_name]["total"] += amount
@@ -540,7 +548,7 @@ def reports_view(request):
                 "pending": 0,
                 "rejected": 0
             }
-        
+
         # Update user spending by status
         if status == "APPROVED":
             users_spending[user_name]["approved"] += amount
@@ -548,6 +556,7 @@ def reports_view(request):
             users_spending[user_name]["rejected"] += amount
         elif status == "PENDING":
             users_spending[user_name]["pending"] += amount
+
             
         # Update vendors
         vendor = receipt.get("Vendor", "Unknown")
@@ -558,7 +567,8 @@ def reports_view(request):
     
    
     # Calculate average expense
-    avg_expense = total_expense / receipt_count if receipt_count > 0 else 0
+    approved_count = status_counts["APPROVED"]
+    avg_expense = approved_expense / approved_count if approved_count > 0 else 0
     
     # Find most common vendor
     most_common_vendor = max(vendors.items(), key=lambda x: x[1])[0] if vendors else "None"
@@ -615,9 +625,12 @@ def reports_view(request):
         raw_status = r.get("ApprovalStatus", "")
         status = raw_status.upper() if raw_status else "PENDING"
             
+        user_id = r.get("UserID", "N/A")
+        user_name = user_map.get(str(user_id), f"User {user_id}")
+
         formatted_recent.append({
             "date": formatted_date,
-            "user_id": r.get("UserID", "N/A"),
+            "user_name": user_name,
             "vendor": r.get("Vendor", "N/A"),
             "amount": r.get("TotalCost", "0.00"),
             "status": status
