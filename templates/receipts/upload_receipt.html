@@ -108,7 +108,8 @@
                         <!-- TotalCost Data -->
                         <div class="form-group">
                             <label for="modalTotal">Total ($):</label>
-                            <input type="text" id="modalTotalCost" name="TotalCost" class="form-control">
+                            <input type="text" id="modalTotalCost" name="TotalCost" class="form-control" step="0.01" min="0" pattern="\d+(\.\d{1,2})?" title="Please enter a valid amount">
+
                         </div>
 
                         <!-- Receipt Date Data -->
@@ -117,16 +118,30 @@
                             <input type="date" id="modalDate" name="Date" class="form-control">
                         </div>
 
-                        <!-- Category of Receipt -->
+                        <!-- Category and Subcategory Selection -->
                         <div class="form-group">
                             <label for="modalCategory">Category:</label>
-                            <input type="text" id="modalCategory" name="Category" class="form-control">
+                            <input type="text" id="modalCategory" name="Category" class="form-control" readonly>
                             
-                            <!-- Add this div to hold category buttons -->
+                            <!-- Main Categories -->
                             <div class="mt-2" id="category-buttons">
                                 {% for category in categories %}
-                                <button type="button" class="btn btn-outline-primary m-1" onclick="selectCategory('{{ category.name }}')">{{ category.name }}</button>
+                                <button type="button" class="btn btn-outline-primary m-1" 
+                                        onclick="selectMainCategory('{{ category.name }}', this)"
+                                        data-has-subcategories="{{ category.has_subcategories|yesno:'true,false' }}">
+                                    {{ category.name }}
+                                </button>
                                 {% endfor %}
+                            </div>
+                            
+                            <!-- Subcategories container - initially hidden -->
+                            <div class="mt-2 d-none" id="subcategory-container">
+                                <label for="modalSubcategory">Subcategory:</label>
+                                <input type="text" id="modalSubcategory" name="Subcategory" class="form-control" readonly>
+                                
+                                <div class="mt-2" id="subcategory-buttons">
+                                    <!-- Subcategories will be loaded here dynamically -->
+                                </div>
                             </div>
                         </div>
 
@@ -140,18 +155,6 @@
 
 
 <script>
-    function selectCategory(categoryName) {
-        // Update the value of the category input field
-        const categoryInput = document.getElementById('modalCategory');
-        if (categoryInput) {
-            categoryInput.value = categoryName;
-            console.log(`Category selected: ${categoryName}`); // Debug log
-        } else {
-            console.error('Category input field not found!');
-        }
-    }
-
-    // JavaScript for Delete Confirmation
     function confirmDelete(receiptId) {
         if (confirm("Are you sure you want to delete this receipt?")) {
             fetch(`/receipts/delete/${receiptId}/`, {
@@ -172,33 +175,175 @@
         }
     }
 
+    // Define subcategories hierarchy
+    const subcategoriesMap = {
+        "Travel": ["Airfare", "Hotel", "Car Rental", "Meals", "Other"],
+        "Office Supplies": ["Stationery", "Technology", "Furniture", "Printing", "Other"],
+        "Meals": ["Client Meeting", "Team Lunch", "Conference", "Other"],
+        "Transportation": ["Taxi", "Public Transit", "Parking", "Fuel", "Other"],
+        "Software": ["Subscriptions", "Licenses", "Cloud Services", "Other"]
+        // Add more categories and subcategories as needed
+    };
+
+    // Currently selected main category
+    let currentMainCategory = "";
+
+    // Function to handle selecting a main category
+    function selectMainCategory(categoryName, buttonElement) {
+        // Update the main category field
+        const categoryInput = document.getElementById('modalCategory');
+        const subcategoryContainer = document.getElementById('subcategory-container');
+        const subcategoryButtons = document.getElementById('subcategory-buttons');
+        
+        // Clear subcategory if changing main category
+        document.getElementById('modalSubcategory').value = "";
+        
+        // Store current selection
+        currentMainCategory = categoryName;
+        
+        // Update the UI
+        if (categoryInput) {
+            categoryInput.value = categoryName;
+            
+            // Highlight selected button
+            document.querySelectorAll('#category-buttons button').forEach(btn => {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-outline-primary');
+            });
+            buttonElement.classList.remove('btn-outline-primary');
+            buttonElement.classList.add('btn-primary');
+            
+            // Check if this category has subcategories
+            if (subcategoriesMap[categoryName] && subcategoriesMap[categoryName].length > 0) {
+                // Show subcategory section
+                subcategoryContainer.classList.remove('d-none');
+                
+                // Clear existing subcategory buttons
+                subcategoryButtons.innerHTML = '';
+                
+                // Add subcategory buttons
+                subcategoriesMap[categoryName].forEach(subcat => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-outline-secondary m-1';
+                    btn.textContent = subcat;
+                    btn.onclick = function() { selectSubcategory(subcat, this); };
+                    subcategoryButtons.appendChild(btn);
+                });
+            } else {
+                // Hide subcategory section if no subcategories
+                subcategoryContainer.classList.add('d-none');
+            }
+        } else {
+            console.error('Category input field not found!');
+        }
+    }
+
+    // Function to handle selecting a subcategory
+    function selectSubcategory(subcategoryName, buttonElement) {
+        const subcategoryInput = document.getElementById('modalSubcategory');
+        const categoryInput = document.getElementById('modalCategory');
+        
+        if (subcategoryInput) {
+            // Update the subcategory field
+            subcategoryInput.value = subcategoryName;
+            
+            // Also update the main category field to include subcategory
+            if (categoryInput && currentMainCategory) {
+                categoryInput.value = `${currentMainCategory} / ${subcategoryName}`;
+            }
+            
+            // Highlight selected subcategory button
+            document.querySelectorAll('#subcategory-buttons button').forEach(btn => {
+                btn.classList.remove('btn-secondary');
+                btn.classList.add('btn-outline-secondary');
+            });
+            buttonElement.classList.remove('btn-outline-secondary');
+            buttonElement.classList.add('btn-secondary');
+        } else {
+            console.error('Subcategory input field not found!');
+        }
+    }
+
     // Fill in data inside Modal
     document.addEventListener("DOMContentLoaded", function () {
-        document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
-            img.addEventListener("click", function () {
-                let receiptID = this.getAttribute("data-receipt-id");
+    document.querySelectorAll(".receipt-thumbnail").forEach(function (img) {
+        img.addEventListener("click", function () {
+            let receiptID = this.getAttribute("data-receipt-id");
 
-                fetch(`/receipts/details/${receiptID}/`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            alert("Error: " + data.error);
-                        } else {
-                            // document.getElementById("modalUserID").textContent = data.UserID;
-                            document.getElementById("modalReceiptID").textContent = data.ReceiptID;
-                            document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
+            fetch(`/receipts/details/${receiptID}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                    } else {
+                        // document.getElementById("modalUserID").textContent = data.UserID;
+                        document.getElementById("modalReceiptID").textContent = data.ReceiptID;
+                        document.getElementById("modalUploadDate").textContent = data.UploadDate || "";
 
-                            document.getElementById("modalVendor").value = data.Vendor || "";
-                            document.getElementById("modalTotalCost").value = data.TotalCost || ""; 
-                            document.getElementById("modalDate").value = data.Date || "";
-                            document.getElementById("modalCategory").value = data.Category || "";
+                        document.getElementById("modalVendor").value = data.Vendor || "";
+                        document.getElementById("modalTotalCost").value = data.TotalCost || ""; 
+                        document.getElementById("modalDate").value = data.Date || "";
+                        
+                        // Handle category and subcategory
+                        const categoryValue = data.Category || "";
+                        document.getElementById("modalCategory").value = categoryValue;
 
-                            $("#receiptModal").modal("show");
+                        // Store for later use to find relevant buttons
+                        let mainCategory = "";
+                        let subCategory = "";
+                        
+                        // Check if category contains a subcategory (format: "Category / Subcategory")
+                        if (categoryValue.includes(" / ")) {
+                            const parts = categoryValue.split(" / ");
+                            mainCategory = parts[0];
+                            subCategory = parts[1];
+                            currentMainCategory = mainCategory;
+                            
+                            // Set subcategory value
+                            document.getElementById("modalSubcategory").value = subCategory;
+                            
+                            // Show subcategory container
+                            document.getElementById("subcategory-container").classList.remove("d-none");
+                            
+                            // First, trigger the main category button click
+                            let categoryButtonFound = false;
+                            document.querySelectorAll('#category-buttons button').forEach(btn => {
+                                if (btn.textContent.trim() === mainCategory) {
+                                    btn.click();
+                                    categoryButtonFound = true;
+                                }
+                            });
+                            
+                            // Now find and highlight the subcategory button
+                            if (categoryButtonFound) {
+                                // Give time for subcategory buttons to be created
+                                // Try to simulate subcategory click instead of manually highlighting
+                                setTimeout(() => {
+                                    document.querySelectorAll('#subcategory-buttons button').forEach(btn => {
+                                        if (btn.textContent.trim() === subCategory) {
+                                            btn.click();  // trigger the subcategory click handler
+                                        }
+                                    });
+                                }, 150);
+
+                            }
+                        } else if (categoryValue) {
+                            // Just handle main category with no subcategory
+                            mainCategory = categoryValue;
+                            document.querySelectorAll('#category-buttons button').forEach(btn => {
+                                if (btn.textContent.trim() === mainCategory) {
+                                    btn.click();
+                                }
+                            });
                         }
-                    })
-                    .catch(error => console.error("Error fetching receipt details:", error));
-            });
+
+                        $("#receiptModal").modal("show");
+                    }
+                })
+                .catch(error => console.error("Error fetching receipt details:", error));
         });
+    });
 
         // If new data in modal, update the object
         document.getElementById("updateReceiptForm").addEventListener("submit", function (event) {
