@@ -28,7 +28,26 @@ BUCKET_NAME = "eeris-1-s3"
 TABLE_NAME = "eeris-1-dynamodb"
 table = dynamodb.Table(TABLE_NAME)
 
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 
+def upload_receipt_to_s3(file_path, user_id):
+    object_key = f"receipts/{user_id}/{os.path.basename(file_path)}"
+    content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        print(f"Upload blocked: {file_path} is not a valid image.")
+        return None
+
+    try:
+        with open(file_path, "rb") as file:
+            s3.upload_fileobj(
+                file, BUCKET_NAME, object_key, ExtraArgs={"ContentType": content_type}
+            )
+        return object_key
+
+    except Exception as e:
+          print(f"Error uploading to S3: {e}")
+          return None
 def upload_receipt_to_s3(image: UploadedFile, user_id: str) -> Optional[str]:
 
     object_key: str = f"receipts/{user_id}/{image.name}"
@@ -47,7 +66,6 @@ def upload_receipt_to_s3(image: UploadedFile, user_id: str) -> Optional[str]:
     except Exception as e:
         print(f"Error uploading to S3: {e}")
         return None
-
 
 def update_receipt_metadata(user_id: str, receipt_id: str, updated_data: dict) -> bool:
     try:

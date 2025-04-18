@@ -10,18 +10,22 @@ from .AWS.aws_utils import (
     delete_receipt,
     update_receipt_metadata,  # New function to update DynamoDB metadata
     get_all_receipts,
-    get_receipts_by_status
+    get_receipts_by_status,
+    is_receipt_data_available,
 )
 import os
 from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import UploadedFile
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 from io import StringIO
 from django.http import HttpResponse
 from django.shortcuts import redirect
+from django.contrib import messages
+from django.contrib.auth import get_user_model
 
-
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg"]
+User = get_user_model()
 
 @login_required
 def manager_dashboard(request):
@@ -44,6 +48,17 @@ def manager_dashboard(request):
         ]
     print("DEBUG: Selected status is", selected_status)
 
+    # Create a mapping of user IDs to user names
+    user_map = {}
+    for user in User.objects.all():
+        name = f"{user.first_name} {user.last_name}".strip()
+        user_map[str(user.id)] = name if name else user.username
+
+    # Add user names to receipts
+    for receipt in all_receipts:
+        receipt["presigned_url"] = generate_presigned_url(receipt["UserID"], receipt["ReceiptID"])
+        receipt["UserName"] = user_map.get(receipt["UserID"], receipt["UserID"])  # Add this line
+    
 
     # Sort to always show PENDING first, then APPROVED, then REJECTED
     def sort_key(receipt):
@@ -60,11 +75,6 @@ def manager_dashboard(request):
         "receipts": all_receipts,
         "selected_status": selected_status
     })
-
-
-
-
-
 
 @login_required
 def approve_reject_receipt(request, receipt_id):
@@ -208,31 +218,33 @@ def export_approved_expenses_csv(request):
 # Divided the og function into two, for clarity
 @login_required
 def upload_receipt(request):
-
-    print("DEBUG: upload_receipt view is being executed") # check if view runs
+    print("DEBUG: upload_receipt view is being executed")
     user_id = str(request.user.id)
 
     if request.method == "POST":
-        print("DEBUG: Received POST request")  # check if request is POST
+        print("DEBUG: Received POST request")
 
         if "receipt_image" in request.FILES:
+            image: UploadedFile = request.FILES["receipt_image"]
             print("DEBUG: File received")
-            
-            image: UploadedFile = request.FILES["receipt_image"]    # ensure image is passed as an UploadedFile object
-    
+
+            # Validate file content type
+            if image.content_type not in ALLOWED_IMAGE_TYPES:
+                print(f"Rejected upload: invalid content type {image.content_type}")
+                return JsonResponse({"error": "Invalid file type."}, status=400)
 
             print(f"Uploading file {image.name} to S3 for user {user_id}")
-            # Upload directly to S3, returns an object key of the new image
             object_key = upload_receipt_to_s3(image, user_id)
 
             if object_key:
-                print(f"Upload successful: {object_key}")  # debugging success case
+                print(f"Upload successful: {object_key}")
                 return redirect("view_receipts")
             else:
-                print("Upload failed!")  # debugging failure case
+                print("Upload failed!")
+                return JsonResponse({"error": "Failed to upload file."}, status=500)
         else:
             print("DEBUG: no file found in request")
-    
+
     return redirect("view_receipts")
 
 
@@ -253,22 +265,38 @@ def view_receipts(request):
 
     for receipt in receipts:
         receipt["image_url"] = generate_presigned_url(user_id, receipt["ReceiptID"])
-
-    # Extract unique categories from all receipts
-    categories = []
-    unique_categories = set()
+    
+    # Define categories with subcategories flag
+    predefined_categories = [
+        {"name": "Travel", "has_subcategories": True},
+        {"name": "Office Supplies", "has_subcategories": True},
+        {"name": "Meals", "has_subcategories": True},
+        {"name": "Transportation", "has_subcategories": True},
+        {"name": "Software", "has_subcategories": True},
+        {"name": "Utilities", "has_subcategories": False},
+        {"name": "Advertising", "has_subcategories": False},
+        {"name": "Other", "has_subcategories": False}
+    ]
+    
+    # Extract any additional unique categories from receipts
+    unique_categories = set(cat["name"] for cat in predefined_categories)
     for receipt in receipts:
-        category = receipt.get("Category")
-        if category and category not in unique_categories:
+        category = receipt.get("Category", "")
+        # Extract main category if in format "Category / Subcategory"
+        if " / " in category:
+            main_category = category.split(" / ")[0]
+            if main_category and main_category not in unique_categories:
+                unique_categories.add(main_category)
+                predefined_categories.append({"name": main_category, "has_subcategories": False})
+        elif category and category not in unique_categories:
             unique_categories.add(category)
-            categories.append({"name": category})
+            predefined_categories.append({"name": category, "has_subcategories": False})
 
     return render(request, "receipts/upload_receipt.html", {
         "receipts": receipts,
         "selected_status": selected_status,
-        "categories": categories
+        "categories": predefined_categories
     })
-
 
 
 # the old function, just in case you need it
@@ -346,9 +374,9 @@ def get_receipt_details(request, receipt_id):
             "Vendor": receipt_details.get("Vendor", "N/A"),
             "TotalCost": receipt_details.get("TotalCost", "N/A"),
             "Date": receipt_details.get("Date", receipt_details.get("ReceiptDate", "N/A")),
-
             "UploadDate": format_upload_date(receipt_details.get("UploadDate", "N/A")),
             "Category": receipt_details.get("Category", "N/A"),
+            "Subcategory": receipt_details.get("Subcategory", "N/A"),
         }
         return JsonResponse(response_data, status=200)
 
@@ -371,6 +399,8 @@ def update_receipt_view(request, receipt_id):
             data["ReceiptDate"] = request.POST.get("Date")
         if "Category" in request.POST:
             data["Category"] = request.POST.get("Category")
+        if "Subcategory" in request.POST:
+            data["Subcategory"] = request.POST.get("Subcategory")
 
         # call update_receipt_metadata with correct parameters
         success = update_receipt_metadata(user_id, receipt_id, data)  
@@ -392,3 +422,250 @@ def check_receipt_data(request, receipt_id):
    print(f"DEBUG: Receipt {receipt_id} data available: {is_data_available}")
   
    return JsonResponse({"dataAvailable": is_data_available})
+
+
+@login_required
+def reports_view(request):
+    if not request.user.is_manager:
+        return redirect('view_receipts')
+
+    # Get all receipts
+    all_receipts = get_all_receipts()
+    from datetime import date
+    
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date") or date.today().strftime("%Y-%m-%d")
+
+    def parse_date(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d")
+        except:
+            return None
+
+    start_date = parse_date(start_date_str)
+    end_date = parse_date(end_date_str)
+
+    # Make end_date inclusive
+    if end_date:
+        end_date += timedelta(days=1)
+
+    if start_date or end_date:
+        def receipt_in_range(receipt):
+            receipt_date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+            receipt_date = parse_date(receipt_date_str)
+            if not receipt_date:
+                return False
+            if start_date and receipt_date < start_date:
+                return False
+            if end_date and receipt_date > end_date:
+                return False
+            return True
+
+        all_receipts = [r for r in all_receipts if receipt_in_range(r)]
+
+    # Initialize counters
+    total_expense = 0
+    approved_expense = 0
+    pending_expense = 0
+    rejected_expense = 0
+    receipt_count = len(all_receipts)
+    
+    # For debugging - track receipts by status
+    status_counts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
+    status_amounts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
+    
+    # For category breakdown and monthly trends (only approved receipts)
+    categories = {}
+    monthly_expenses = {}
+    users_spending = {}
+    vendors = {}
+
+    # Create a mapping of user_id to full name or username
+    user_map = {}
+    for user in User.objects.all():
+        name = f"{user.first_name} {user.last_name}".strip()
+        user_map[str(user.id)] = name if name else user.username
+
+    # Process each receipt
+    for receipt in all_receipts:
+        status = receipt.get("ApprovalStatus", "").upper() or "PENDING"
+        total_cost = receipt.get("TotalCost", "N/A")
+        
+        # Update status counts
+        if status == "APPROVED":
+            status_counts["APPROVED"] += 1
+        elif status == "REJECTED":
+            status_counts["REJECTED"] += 1
+        elif status == "PENDING":
+            status_counts["PENDING"] += 1
+        else:
+            status_counts["UNKNOWN"] += 1
+        
+        # Handle amount calculation
+        if total_cost == "N/A":
+            amount = 0
+        else:
+            try:
+                amount = float(total_cost)
+            except (ValueError, TypeError):
+                amount = 0
+        
+        # Update total expenses
+        total_expense += amount
+        
+        # Update status amounts
+        if status == "APPROVED":
+            approved_expense += amount
+            status_amounts["APPROVED"] += amount
+            
+            # Only process category, monthly, and user spending for APPROVED receipts
+            # Update category breakdown
+            category = receipt.get("Category", "Uncategorized")
+            if category in categories:
+                categories[category] += amount
+            else:
+                categories[category] = amount
+                
+            # Update monthly trends
+            date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+            if date_str:
+                try:
+                    date = datetime.strptime(date_str, "%Y-%m-%d")
+                    month_key = date.strftime("%Y-%m")
+                    month_name = date.strftime("%b %Y")
+                    
+                    if month_key in monthly_expenses:
+                        monthly_expenses[month_key]["amount"] += amount
+                    else:
+                        monthly_expenses[month_key] = {
+                            "name": month_name,
+                            "amount": amount
+                        }
+                except ValueError:
+                    pass
+            
+            # Update user spending (only for approved receipts)
+            user_id = receipt.get("UserID", "Unknown")
+            user_name = user_map.get(str(user_id), f"User {user_id}")
+
+            if user_name in users_spending:
+                users_spending[user_name]["total"] += amount
+                users_spending[user_name]["count"] += 1
+                users_spending[user_name]["approved"] += amount
+            else:
+                users_spending[user_name] = {
+                    "user_id": user_id,
+                    "total": amount,
+                    "count": 1,
+                    "approved": amount,
+                    "pending": 0,
+                    "rejected": 0
+                }
+            
+        elif status == "REJECTED":
+            rejected_expense += amount
+            status_amounts["REJECTED"] += amount
+        elif status == "PENDING":
+            pending_expense += amount
+            status_amounts["PENDING"] += amount
+        else:
+            status_amounts["UNKNOWN"] += amount
+            pending_expense += amount
+        
+        # Update vendors (for all receipts)
+        vendor = receipt.get("Vendor", "Unknown")
+        if vendor in vendors:
+            vendors[vendor] += 1
+        else:
+            vendors[vendor] = 1
+    
+    # Calculate average expense
+    approved_count = status_counts["APPROVED"]
+    avg_expense = approved_expense / approved_count if approved_count > 0 else 0
+    
+    # Find most common vendor
+    most_common_vendor = max(vendors.items(), key=lambda x: x[1])[0] if vendors else "None"
+    
+    # Sort monthly expenses by date
+    sorted_monthly = sorted(monthly_expenses.items(), key=lambda x: x[0])
+    monthly_data = [item[1] for item in sorted_monthly]
+    
+    # Sort categories by amount
+    category_data = [{"name": k, "amount": v} for k, v in categories.items()]
+    category_data.sort(key=lambda x: x["amount"], reverse=True)
+    
+    # Sort users by total spending (only approved amounts)
+    top_spenders = []
+    for user_name, data in users_spending.items():
+        top_spenders.append({
+            "name": user_name,
+            "user_id": data["user_id"],
+            "total": data["approved"],  # Only show approved amounts
+            "count": data["count"],
+            "approved": data["approved"],
+            "pending": data["pending"],
+            "rejected": data["rejected"]
+        })
+    
+    top_spenders.sort(key=lambda x: x["total"], reverse=True)
+    top_spenders = top_spenders[:5]  # Limit to top 5
+    
+    # Create status data for chart
+    status_data = [
+        {"name": "Approved", "amount": approved_expense},
+        {"name": "Pending", "amount": pending_expense},
+        {"name": "Rejected", "amount": rejected_expense}
+    ]
+    
+    # Get recent activity (latest 5 receipts)
+    recent_receipts = sorted(
+        all_receipts, 
+        key=lambda x: x.get("UploadDate", ""), 
+        reverse=True
+    )[:5]
+    
+    # Format the recent receipts for display
+    formatted_recent = []
+    for r in recent_receipts:
+        date_str = r.get("Date") or r.get("ReceiptDate", "N/A")
+        try:
+            date = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            formatted_date = date_str
+            
+        raw_status = r.get("ApprovalStatus", "")
+        status = raw_status.upper() if raw_status else "PENDING"
+            
+        user_id = r.get("UserID", "N/A")
+        user_name = user_map.get(str(user_id), f"User {user_id}")
+
+        formatted_recent.append({
+            "date": formatted_date,
+            "user_name": user_name,
+            "vendor": r.get("Vendor", "N/A"),
+            "amount": r.get("TotalCost", "0.00"),
+            "status": status
+        })
+    
+    import json
+    
+    context = {
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "today": date.today().strftime("%Y-%m-%d"),
+        "total_expense": round(total_expense, 2),
+        "approved_expense": round(approved_expense, 2),
+        "pending_expense": round(pending_expense, 2),
+        "rejected_expense": round(rejected_expense, 2),
+        "avg_expense": round(avg_expense, 2),
+        "receipt_count": receipt_count,
+        "most_common_vendor": most_common_vendor,
+        "category_data": json.dumps(category_data),
+        "monthly_data": json.dumps(monthly_data),
+        "status_data": json.dumps(status_data),
+        "top_spenders": json.dumps(top_spenders),
+        "recent_activity": formatted_recent
+    }
+    
+    return render(request, 'receipts/reports.html', context)
