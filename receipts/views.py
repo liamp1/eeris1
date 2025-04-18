@@ -429,7 +429,7 @@ def reports_view(request):
     if not request.user.is_manager:
         return redirect('view_receipts')
 
-     # Get all receipts
+    # Get all receipts
     all_receipts = get_all_receipts()
     from datetime import date
     
@@ -449,7 +449,6 @@ def reports_view(request):
     if end_date:
         end_date += timedelta(days=1)
 
-
     if start_date or end_date:
         def receipt_in_range(receipt):
             receipt_date_str = receipt.get("Date") or receipt.get("ReceiptDate")
@@ -464,7 +463,6 @@ def reports_view(request):
 
         all_receipts = [r for r in all_receipts if receipt_in_range(r)]
 
-    
     # Initialize counters
     total_expense = 0
     approved_expense = 0
@@ -476,7 +474,7 @@ def reports_view(request):
     status_counts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
     status_amounts = {"APPROVED": 0, "PENDING": 0, "REJECTED": 0, "UNKNOWN": 0}
     
-    # For category breakdown and monthly trends
+    # For category breakdown and monthly trends (only approved receipts)
     categories = {}
     monthly_expenses = {}
     users_spending = {}
@@ -487,11 +485,7 @@ def reports_view(request):
     for user in User.objects.all():
         name = f"{user.first_name} {user.last_name}".strip()
         user_map[str(user.id)] = name if name else user.username
-    
 
-    for i, receipt in enumerate(all_receipts[:5]):
-        print(f"Receipt {i+1}: {receipt.get('ReceiptID')}, Status: '{receipt.get('ApprovalStatus', '')}', Amount: {receipt.get('TotalCost', 0)}")
-    
     # Process each receipt
     for receipt in all_receipts:
         status = receipt.get("ApprovalStatus", "").upper() or "PENDING"
@@ -509,10 +503,8 @@ def reports_view(request):
         
         # Handle amount calculation
         if total_cost == "N/A":
-            # Treat N/A values as zero
             amount = 0
         else:
-            # Try to convert to float
             try:
                 amount = float(total_cost)
             except (ValueError, TypeError):
@@ -525,6 +517,51 @@ def reports_view(request):
         if status == "APPROVED":
             approved_expense += amount
             status_amounts["APPROVED"] += amount
+            
+            # Only process category, monthly, and user spending for APPROVED receipts
+            # Update category breakdown
+            category = receipt.get("Category", "Uncategorized")
+            if category in categories:
+                categories[category] += amount
+            else:
+                categories[category] = amount
+                
+            # Update monthly trends
+            date_str = receipt.get("Date") or receipt.get("ReceiptDate")
+            if date_str:
+                try:
+                    date = datetime.strptime(date_str, "%Y-%m-%d")
+                    month_key = date.strftime("%Y-%m")
+                    month_name = date.strftime("%b %Y")
+                    
+                    if month_key in monthly_expenses:
+                        monthly_expenses[month_key]["amount"] += amount
+                    else:
+                        monthly_expenses[month_key] = {
+                            "name": month_name,
+                            "amount": amount
+                        }
+                except ValueError:
+                    pass
+            
+            # Update user spending (only for approved receipts)
+            user_id = receipt.get("UserID", "Unknown")
+            user_name = user_map.get(str(user_id), f"User {user_id}")
+
+            if user_name in users_spending:
+                users_spending[user_name]["total"] += amount
+                users_spending[user_name]["count"] += 1
+                users_spending[user_name]["approved"] += amount
+            else:
+                users_spending[user_name] = {
+                    "user_id": user_id,
+                    "total": amount,
+                    "count": 1,
+                    "approved": amount,
+                    "pending": 0,
+                    "rejected": 0
+                }
+            
         elif status == "REJECTED":
             rejected_expense += amount
             status_amounts["REJECTED"] += amount
@@ -533,68 +570,15 @@ def reports_view(request):
             status_amounts["PENDING"] += amount
         else:
             status_amounts["UNKNOWN"] += amount
-            pending_expense += amount  # Group unknown with pending
+            pending_expense += amount
         
-        # Update category breakdown
-        category = receipt.get("Category", "Uncategorized")
-        if category in categories:
-            categories[category] += amount
-        else:
-            categories[category] = amount
-            
-        # Update monthly trends
-        date_str = receipt.get("Date") or receipt.get("ReceiptDate")
-        if date_str:
-            try:
-                date = datetime.strptime(date_str, "%Y-%m-%d")
-                month_key = date.strftime("%Y-%m")
-                month_name = date.strftime("%b %Y")
-                
-                if month_key in monthly_expenses:
-                    monthly_expenses[month_key]["amount"] += amount
-                else:
-                    monthly_expenses[month_key] = {
-                        "name": month_name,
-                        "amount": amount
-                    }
-            except ValueError:
-                pass
-        
-        # Update user spending
-        user_id = receipt.get("UserID", "Unknown")
-        user_name = user_map.get(str(user_id), f"User {user_id}")  # 🔥 Correct name now
-
-        # Use user_name as the key instead of user_id
-        if user_name in users_spending:
-            users_spending[user_name]["total"] += amount
-            users_spending[user_name]["count"] += 1
-        else:
-            users_spending[user_name] = {
-                "user_id": user_id,
-                "total": amount,
-                "count": 1,
-                "approved": 0,
-                "pending": 0,
-                "rejected": 0
-            }
-
-        # Update user spending by status
-        if status == "APPROVED":
-            users_spending[user_name]["approved"] += amount
-        elif status == "REJECTED":
-            users_spending[user_name]["rejected"] += amount
-        elif status == "PENDING":
-            users_spending[user_name]["pending"] += amount
-
-            
-        # Update vendors
+        # Update vendors (for all receipts)
         vendor = receipt.get("Vendor", "Unknown")
         if vendor in vendors:
             vendors[vendor] += 1
         else:
             vendors[vendor] = 1
     
-   
     # Calculate average expense
     approved_count = status_counts["APPROVED"]
     avg_expense = approved_expense / approved_count if approved_count > 0 else 0
@@ -610,13 +594,13 @@ def reports_view(request):
     category_data = [{"name": k, "amount": v} for k, v in categories.items()]
     category_data.sort(key=lambda x: x["amount"], reverse=True)
     
-    # Sort users by total spending
+    # Sort users by total spending (only approved amounts)
     top_spenders = []
     for user_name, data in users_spending.items():
         top_spenders.append({
             "name": user_name,
             "user_id": data["user_id"],
-            "total": data["total"],
+            "total": data["approved"],  # Only show approved amounts
             "count": data["count"],
             "approved": data["approved"],
             "pending": data["pending"],
@@ -650,7 +634,6 @@ def reports_view(request):
         except (ValueError, TypeError):
             formatted_date = date_str
             
-        # Get status with explicit normalization
         raw_status = r.get("ApprovalStatus", "")
         status = raw_status.upper() if raw_status else "PENDING"
             
